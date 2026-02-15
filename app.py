@@ -1,3 +1,4 @@
+# app.py
 import os
 from datetime import datetime
 
@@ -63,27 +64,55 @@ for risk, items in SURGERY_TABLE5.items():
 DEFAULT_DRUGS = sorted(
     list(
         {
-            "Aspirin", "Klopidogrel", "Prasugrel", "Tikagrelor",
-            "Warfarin", "Apiksaban", "Rivaroksaban", "Edoksaban", "Dabigatran",
-            "Enoksaparin", "Dalteparin", "Fondaparinuks",
-            "Metoprolol", "Bisoprolol", "Nebivolol", "Carvedilol", "Propranolol",
-            "Diltiazem", "Verapamil",
-            "Amiodaron", "Digoksin",
-            "Amlodipin", "Ramipril", "Perindopril", "Enalapril", "Valsartan", "Losartan",
+            "Aspirin",
+            "Klopidogrel",
+            "Prasugrel",
+            "Tikagrelor",
+            "Warfarin",
+            "Apiksaban",
+            "Rivaroksaban",
+            "Edoksaban",
+            "Dabigatran",
+            "Enoksaparin",
+            "Dalteparin",
+            "Fondaparinuks",
+            "Metoprolol",
+            "Bisoprolol",
+            "Nebivolol",
+            "Carvedilol",
+            "Propranolol",
+            "Diltiazem",
+            "Verapamil",
+            "Amiodaron",
+            "Digoksin",
+            "Amlodipin",
+            "Ramipril",
+            "Perindopril",
+            "Enalapril",
+            "Valsartan",
+            "Losartan",
             "Sacubitril/Valsartan",
-            "Furosemid", "Torasemid", "Spironolakton", "Eplerenon",
-            "Empagliflozin", "Dapagliflozin",
-            "Atorvastatin", "Rosuvastatin",
-            "Pantoprazol", "Omeprazol",
+            "Furosemid",
+            "Torasemid",
+            "Spironolakton",
+            "Eplerenon",
+            "Empagliflozin",
+            "Dapagliflozin",
+            "Atorvastatin",
+            "Rosuvastatin",
+            "Pantoprazol",
+            "Omeprazol",
         }
     )
 )
+
 
 def load_drug_list():
     csv_path = os.path.join("data", "sgk_ilaclar.csv")
     if os.path.exists(csv_path):
         try:
             import pandas as pd
+
             df = pd.read_csv(csv_path)
             if "drug_name" in df.columns:
                 drugs = df["drug_name"].dropna().astype(str).unique().tolist()
@@ -96,6 +125,7 @@ def load_drug_list():
             return DEFAULT_DRUGS, f"İlaç listesi: varsayılan (CSV okunamadı: {e})"
     return DEFAULT_DRUGS, "İlaç listesi: varsayılan (CSV yok)"
 
+
 DRUGS, DRUGS_CAPTION = load_drug_list()
 
 
@@ -105,29 +135,78 @@ DRUGS, DRUGS_CAPTION = load_drug_list()
 BETA_BLOCKERS = {"metoprolol", "bisoprolol", "nebivolol", "carvedilol", "propranolol"}
 NON_DHP_CCB = {"diltiazem", "verapamil"}
 
-# Edoxaban etkileşim ilaçları (kullandığı ilaçlar listesinde varsa doz azaltımı uyarısı)
 DOAC_INTERACT_EDOXABAN = {
-    "siklosporin", "cyclosporine",
+    "siklosporin",
+    "cyclosporine",
     "dronedarone",
-    "eritromisin", "erythromycin",
-    "ketokonazol", "ketoconazole",
+    "eritromisin",
+    "erythromycin",
+    "ketokonazol",
+    "ketoconazole",
 }
 
+
 def meds_contains_any(meds, needles_lower_set):
-    meds_l = [m.lower() for m in meds]
+    meds_l = [m.lower() for m in (meds or [])]
     for n in needles_lower_set:
         if any(n in m for m in meds_l):
             return True
     return False
 
 
+def get_mech_valve_warfarin_note() -> str:
+    return "\n".join(
+        [
+            "MEKANİK KAPAK – WARFARİN YÖNETİMİ ve ENFEKTİF ENDOKARDİT PROFİLAKSİSİ (Otomatik Not)",
+            "- Warfarin operasyon tarihinden **5 gün önce kesilmelidir**.",
+            "- Operasyon sabahı hedef **INR < 1.5** olacak şekilde planlama yapılmalıdır.",
+            "- INR operasyon öncesi gün kontrol edilmelidir.",
+            "",
+            "Enfektif Endokardit Profilaksisi:",
+            "- Standart: **Amoksisilin 2 g PO** (işlemden 30–60 dk önce).",
+            "- Penisilin alerjisi varsa: **Klindamisin 600 mg PO** veya **Azitromisin 500 mg PO**.",
+            "",
+            "Postop Warfarin:",
+            "- Hemostaz sağlandıktan sonra genellikle **operasyondan 12–24 saat sonra** başlanabilir.",
+            "- Büyük kanama riski varsa **48–72 saate** ertelenebilir.",
+            "- Başlangıç dozu: hastanın **önceki stabil dozuna göre** başlanır.",
+            "",
+            "INR Hedefleri:",
+            "- Mekanik mitral kapak: **2.5–3.5**",
+            "- Mekanik aort kapak: **2.0–3.0**",
+            "- Atriyal fibrilasyon: **2.0–3.0**",
+            "",
+            "Bridging:",
+            "- **INR >2 olana kadar LMWH ile bridging uygulanır; INR >2 olduktan sonra LMWH kesilmesi uygundur.**",
+        ]
+    )
+
+
+def get_device_management_note(has_device: str, device_type: str, pace_dependent: str) -> str:
+    if has_device != "Evet":
+        return ""
+
+    dt = (device_type or "").strip()
+    pd = (pace_dependent or "").strip()
+
+    if dt not in {"Permanent pacemaker", "ICD", "CRT"}:
+        return "- Cihaz: Belirtilmedi.\n"
+
+    if pd not in {"Evet", "Hayır"}:
+        return f"- Cihaz: {dt}. Pace bağımlılığı belirtilmedi.\n"
+
+    if dt == "Permanent pacemaker":
+        if pd == "Evet":
+            return "- Cihaz: Permanent pacemaker. **Pace bağımlı** → **VOO 80 bpm** moduna alınmalı (perioperatif plan).\n"
+        return "- Cihaz: Permanent pacemaker. Pace bağımlı değil → **VVI 40 bpm** alınmalı (perioperatif plan).\n"
+
+    # ICD or CRT
+    if pd == "Evet":
+        return f"- Cihaz: {dt}. **Pace bağımlı** → **Taşi-terapiler kapatılmalı** + **VOO 80 bpm** moduna alınmalı.\n"
+    return f"- Cihaz: {dt}. Pace bağımlı değil → **Taşi-terapiler kapatılmalı** + **VVI 40 bpm** alınmalı.\n"
+
+
 def get_bradycardia_meds_note(hr: int, has_hf: str, current_meds: list[str]) -> str:
-    """
-    HR<60 durumunda, kullanılan hız düşürücü ajanlara göre perioperatif doz azaltma/hold notu üretir.
-    İstenilen kurallar:
-      - HR < 60 + HF yok + (BB veya non-DHP) -> doz azaltımı veya kesilme uygundur
-      - HR < 60 + HF var -> BB doz azaltımı veya kesilmesi uygundur
-    """
     if hr >= 60:
         return ""
 
@@ -164,65 +243,44 @@ def get_doac_dose_warnings(
     bleed_risk: str,
     very_high_bleed: bool,
 ) -> list[str]:
-    """
-    DOAC doz azaltımı / kesme uyarıları (istenen kurallar):
-    - Apiksaban:
-        * Doz azaltımı: (yaş ≥80) + (eGFR <30) (kilo kriteri yok sayıldı)
-        * eGFR <15 -> kesme/kaçınma uyarısı
-    - Dabigatran:
-        * Doz azaltımı: yaş ≥80 veya eşzamanlı verapamil
-        * Doz azaltımı bireysel değerlendirme: 75–80 yaş, eGFR 30–50, yüksek kanama riski
-        * eGFR <30 -> kesme/kaçınma uyarısı
-    - Edoksaban:
-        * Doz azaltımı: eGFR 15–50
-        * Doz azaltımı: siklosporin/dronedarone/eritromisin/ketokonazol eşzamanlı
-        * eGFR <15 -> kesme/kaçınma uyarısı
-    - Rivaroksaban:
-        * Doz azaltımı: eGFR 15–49
-        * eGFR <15 -> kesme/kaçınma uyarısı
-    """
     warnings: list[str] = []
     a = (agent or "").strip().lower()
     meds_l = [m.lower() for m in (current_meds or [])]
     has_verapamil = any("verapamil" in m for m in meds_l)
     has_edox_interaction = any(any(x in m for m in meds_l) for x in DOAC_INTERACT_EDOXABAN)
-
     high_bleed = (bleed_risk == "Yüksek") or bool(very_high_bleed)
 
     if egfr is None:
         egfr = 0.0
 
-    # APIXABAN
     if a in {"apiksaban", "apixaban"}:
         if egfr < 15:
-            warnings.append("⚠️ Apiksaban: eGFR <15 mL/dk/1.73m² → **kesme/kaçınma uyarısı**.")
+            warnings.append("⚠️ Apiksaban: eGFR <15 → **kesme/kaçınma uyarısı**.")
         elif (age >= 80 and egfr < 30):
             warnings.append("⚠️ Apiksaban: yaş ≥80 + eGFR <30 → **doz azaltımı uyarısı**.")
         elif egfr < 30:
             warnings.append("⚠️ Apiksaban: eGFR <30 → **doz azaltımı uyarısı**.")
 
-    # DABIGATRAN
     elif a in {"dabigatran", "dabigatran eteksilat"}:
         if egfr < 30:
             warnings.append("⚠️ Dabigatran: eGFR <30 → **kesme/kaçınma uyarısı**.")
-
         if age >= 80 or has_verapamil:
             warnings.append("⚠️ Dabigatran: (yaş ≥80) veya (eş zamanlı verapamil) → **doz azaltımı uyarısı**.")
-
         if (75 <= age < 80) or (30 <= egfr <= 50) or high_bleed:
-            warnings.append("ℹ️ Dabigatran: 75–80 yaş / eGFR 30–50 / yüksek kanama riski → **doz azaltımı bireysel değerlendirilir**.")
+            warnings.append(
+                "ℹ️ Dabigatran: 75–80 yaş / eGFR 30–50 / yüksek kanama riski → **doz azaltımı bireysel değerlendirilir**."
+            )
 
-    # EDOXABAN
     elif a in {"edoksaban", "edoxaban"}:
         if egfr < 15:
             warnings.append("⚠️ Edoksaban: eGFR <15 → **kesme/kaçınma uyarısı**.")
         elif 15 <= egfr <= 50:
             warnings.append("⚠️ Edoksaban: eGFR 15–50 → **doz azaltımı uyarısı**.")
-
         if has_edox_interaction:
-            warnings.append("⚠️ Edoksaban: siklosporin / dronedarone / eritromisin / ketokonazol eş zamanlı kullanım → **doz azaltımı uyarısı**.")
+            warnings.append(
+                "⚠️ Edoksaban: etkileşimli ilaç (siklosporin/dronedarone/eritromisin/ketokonazol) → **doz azaltımı uyarısı**."
+            )
 
-    # RIVAROXABAN
     elif a in {"rivaroksaban", "rivaroxaban"}:
         if egfr < 15:
             warnings.append("⚠️ Rivaroksaban: eGFR <15 → **kesme/kaçınma uyarısı**.")
@@ -263,9 +321,9 @@ def get_af_rate_control_text(has_af: str, hr: int, has_hf: str, lvef: str, curre
             lines.append("- Non-DHP KKB (verapamil/diltiazem) mevcut: uygun hastada hız kontrolünde kullanılabilir; hipotansiyon/bradikardi açısından izlem önerilir.")
 
     if hfrEF:
-        lines.append("- HFrEF varlığında non-DHP KKB’den (verapamil/diltiazem) kaçınma; hız kontrolünde beta-bloker ± digoksin; kontrol sağlanamazsa veya instabilite varsa amiodaron multidisipliner kararla düşünülebilir.")
+        lines.append("- HFrEF varlığında non-DHP KKB’den kaçınma; hız kontrolünde beta-bloker ± digoksin; instabilitede amiodaron multidisipliner kararla düşünülebilir.")
     else:
-        lines.append("- Hemodinami stabil hastada hız kontrolünde beta-bloker veya non-DHP KKB seçenekleri; instabilitede öncelik hemodinamik stabilizasyondur.")
+        lines.append("- Hemodinami stabil hastada hız kontrolünde beta-bloker veya non-DHP KKB; instabilitede öncelik hemodinamik stabilizasyondur.")
 
     if brady_note:
         lines.append(brady_note.strip())
@@ -275,11 +333,16 @@ def get_af_rate_control_text(has_af: str, hr: int, has_hf: str, lvef: str, curre
 
 def get_postop_af_risk_text(age: int, has_hf: str, has_ckd: str, surgery_risk: str, hr: int) -> str:
     flags = 0
-    if age >= 70: flags += 1
-    if has_hf == "Evet": flags += 1
-    if has_ckd == "Evet": flags += 1
-    if surgery_risk == "Yüksek": flags += 1
-    if hr >= 100: flags += 1
+    if age >= 70:
+        flags += 1
+    if has_hf == "Evet":
+        flags += 1
+    if has_ckd == "Evet":
+        flags += 1
+    if surgery_risk == "Yüksek":
+        flags += 1
+    if hr >= 100:
+        flags += 1
 
     if flags >= 3:
         risk_level = "artmış"
@@ -288,15 +351,37 @@ def get_postop_af_risk_text(age: int, has_hf: str, has_ckd: str, surgery_risk: s
     else:
         risk_level = "düşük/orta"
 
-    return (
-        f"- Postop AF/aritmi riski: {risk_level}. İlk 48–72 saatte ritim/HR ve elektrolitlerin yakın izlenmesi; tetikleyicilerin düzeltilmesi önerilir."
-    )
+    return f"- Postop AF/aritmi riski: {risk_level}. İlk 48–72 saatte ritim/HR ve elektrolitlerin yakın izlenmesi önerilir."
+
+
+# ----------------------------
+# Monotherapy preop plan (USER REQUEST - INVERTED LOGIC)
+# - Bleeding risk LOW/MID  -> CONTINUE
+# - Bleeding risk HIGH     -> STOP: ASA 7 days, Clopidogrel 5 days
+# Bleeding risk proxy: Table-5 surgery_risk == "Yüksek" means HIGH.
+# ----------------------------
+def get_monotherapy_preop_plan(mono_agent: str, surgery_risk: str) -> str:
+    agent = (mono_agent or "").strip()
+
+    # Düşük/Orta risk -> continue
+    if surgery_risk in {"Düşük", "Orta"}:
+        return f"- Monoterapi ({agent}): Cerrahi kanama riski **düşük/orta** → **ilaç devamı önerilir (kesilmez).**"
+
+    # Yüksek risk -> stop by agent
+    if surgery_risk == "Yüksek":
+        if agent == "Aspirin":
+            return "- Monoterapi (Aspirin): Cerrahi kanama riski **yüksek** → **operasyondan 7 gün önce kes.**"
+        if agent == "Klopidogrel":
+            return "- Monoterapi (Klopidogrel): Cerrahi kanama riski **yüksek** → **operasyondan 5 gün önce kes.**"
+        return "- Monoterapi: Ajan belirtilmedi (yüksek kanama riski)."
+
+    return "- Monoterapi: Cerrahi kanama riski belirlenemedi."
 
 
 # ----------------------------
 # Consultation note generator
 # ----------------------------
-def generate_consultation_note(context: dict, dapt_result: dict, oac_text_block: str) -> str:
+def generate_consultation_note(context: dict, dapt_result: dict, oac_text_block: str, device_note: str) -> str:
     today = datetime.now().strftime("%d.%m.%Y")
     hr_val = int(context.get("hr", 0) or 0)
 
@@ -307,17 +392,13 @@ def generate_consultation_note(context: dict, dapt_result: dict, oac_text_block:
     )
 
     symptoms_list = context.get("symptoms", [])
-    symptom_text = (
-        ", ".join(symptoms_list)
-        if symptoms_list and "Yok" not in symptoms_list
-        else "Aktif kardiyak semptom tariflemiyor."
-    )
+    symptom_text = ", ".join(symptoms_list) if symptoms_list and "Yok" not in symptoms_list else "Aktif kardiyak semptom tariflemiyor."
 
     hf_block = "- Kalp yetersizliği: Yok / bilinmiyor.\n"
     if context.get("has_hf") == "Evet":
         hf_block = (
             f"- Kalp yetersizliği: VAR (NYHA: {context.get('nyha')}, LVEF: {context.get('lvef')}).\n"
-            "- Perioperatif volüm/hemodinami: Hipovolemi ve hipervolemiden kaçınılmalıdır; sıvı yönetimi hedefe yönelik ve dikkatli titrasyonla yürütülmelidir.\n"
+            "- Perioperatif volüm/hemodinami: Hipovolemi ve hipervolemiden kaçınılmalı; sıvı yönetimi hedefe yönelik titrasyonla yürütülmelidir.\n"
         )
 
     ckd_block = "- Kronik böbrek hastalığı: Yok / bilinmiyor.\n"
@@ -327,13 +408,22 @@ def generate_consultation_note(context: dict, dapt_result: dict, oac_text_block:
         ckd_block = f"- Kronik böbrek hastalığı: VAR (eGFR: {egfr_text}). Nefrotoksik ajanlardan kaçınılmalı; elektrolit/volüm yakın izlenmelidir.\n"
 
     comorb = []
-    if context.get("has_dm") == "Evet": comorb.append("DM")
-    if context.get("has_ht") == "Evet": comorb.append("HT")
-    if context.get("has_cad") == "Evet": comorb.append("KAH/PCI öyküsü")
-    if context.get("has_af") == "Evet": comorb.append("AF")
-    if context.get("has_mech_valve") == "Evet": comorb.append("Mekanik kapak")
-    if context.get("has_hf") == "Evet": comorb.append("Kalp yetersizliği")
-    if context.get("has_ckd") == "Evet": comorb.append("CKD")
+    if context.get("has_dm") == "Evet":
+        comorb.append("DM")
+    if context.get("has_ht") == "Evet":
+        comorb.append("HT")
+    if context.get("has_cad") == "Evet":
+        comorb.append("KAH/PCI öyküsü")
+    if context.get("has_af") == "Evet":
+        comorb.append("AF")
+    if context.get("has_mech_valve") == "Evet":
+        comorb.append("Mekanik kapak")
+    if context.get("has_hf") == "Evet":
+        comorb.append("Kalp yetersizliği")
+    if context.get("has_ckd") == "Evet":
+        comorb.append("CKD")
+    if context.get("has_device") == "Evet":
+        comorb.append(f"Kardiyak cihaz ({context.get('device_type')})")
     comorb_text = ", ".join(comorb) if comorb else "Belirtilmedi"
 
     tests = ["12 derivasyonlu ECG (bazal)"]
@@ -373,6 +463,42 @@ def generate_consultation_note(context: dict, dapt_result: dict, oac_text_block:
         current_meds=meds,
     )
 
+    # ----------------------------
+    # Antiplatelet block (DAPT vs Monotherapy)
+    # ----------------------------
+    ant_strategy = context.get("antiplatelet_strategy", "—")
+    pci_time = context.get("pci_time", "—")
+    mono_agent = context.get("mono_agent", "—")
+
+    if ant_strategy == "Monoterapi":
+        mono_plan = get_monotherapy_preop_plan(mono_agent, context.get("surgery_risk"))
+        antiplatelet_block = "\n".join(
+            [
+                "F1) Antiplatelet Tedavi",
+                f"- PCI zamanı: {pci_time}",
+                "- Strateji: Monoterapi",
+                f"- Ajan: {mono_agent}",
+                mono_plan,
+            ]
+        )
+    elif ant_strategy == "DAPT (Tool-1)":
+        antiplatelet_block = "\n".join(
+            [
+                "F1) Antiplatelet Tedavi",
+                f"- PCI zamanı: {pci_time}",
+                "- Strateji: DAPT (Tool-1)",
+                f"- Aspirin: {context.get('aspirin_dose')}",
+                f"- P2Y12 inhibitörü: {context.get('p2y12_agent_ui')}",
+            ]
+        )
+    else:
+        antiplatelet_block = "\n".join(
+            [
+                "F1) Antiplatelet Tedavi",
+                "- Strateji: Belirtilmedi / uygulanmadı.",
+            ]
+        )
+
     plan = dapt_result.get("recommendation_tr", "")
     rec_class = dapt_result.get("class", "")
 
@@ -381,8 +507,6 @@ PREOPERATİF KARDİYOLOJİ KONSÜLTASYON NOTU
 Tarih: {today}
 
 A) Hasta Bilgileri
-- Ad Soyad: {context.get("patient_name") or "—"}
-- Protokol/Dosya No: {context.get("patient_id") or "—"}
 - Yaş/Cinsiyet: {context.get("patient_age")} / {context.get("patient_sex")}
 - Komorbiditeler: {comorb_text}
 - Mevcut ilaçlar: {meds_text}
@@ -397,15 +521,16 @@ C) İşlem / Cerrahi Bilgisi
 - Cerrahi aciliyeti: {context.get("urgency")}
 
 D) Kardiyak Öykü – Semptom / Fonksiyonel Kapasite
-- Semptomlar: {context.get("symptom_text")}
+- Semptomlar: {symptom_text}
 - Fonksiyonel kapasite: {context.get("functional_capacity")}
 
 E) Klinik Değerlendirme (perioperatif kritik noktalar)
 {hf_block}{ckd_block}
+{device_note}
 
-F) Antitrombotik Tedavi (Mevcut)
-- Aspirin: {context.get("aspirin_dose")}
-- P2Y12 inhibitörü: {context.get("p2y12_agent_ui")}
+F) Antitrombotik Yönetim
+{antiplatelet_block}
+
 {oac_text_block}
 
 G) Kılavuz Temelli Perioperatif Antitrombotik Plan (Tool-1 / DAPT)
@@ -437,27 +562,20 @@ st.title("CAPE – Preop Kardiyoloji Karar Destek (Tek Sayfa)")
 engine = DaptRuleEngine("rules/dapt.yaml")
 oac_engine = OacRuleEngine()
 
-# --- session state holders ---
 if "answers" not in st.session_state:
     st.session_state["answers"] = {}
 if "dapt_result" not in st.session_state:
     st.session_state["dapt_result"] = None
-if "oac_result" not in st.session_state:
-    st.session_state["oac_result"] = None
-if "oac_dose_warnings" not in st.session_state:
-    st.session_state["oac_dose_warnings"] = []
 
 
 # ----------------------------
-# 1) Shared patient inputs (always visible)
+# 1) Shared patient inputs
 # ----------------------------
-with st.expander("1) Hasta Kimlik, Cerrahi ve Klinik Bilgiler", expanded=True):
+with st.expander("1) Hasta Yaş, Cerrahi ve Klinik Bilgiler", expanded=True):
     colA, colB = st.columns(2)
     with colA:
-        patient_name = st.text_input("Ad Soyad", placeholder="Örn: Halil Yılmaz")
         patient_age = st.number_input("Yaş", min_value=0, max_value=120, value=55, step=1)
     with colB:
-        patient_id = st.text_input("Protokol / Dosya No", placeholder="Örn: 2026-001234")
         patient_sex = st.selectbox("Cinsiyet", ["Erkek", "Kadın"])
 
     st.markdown("---")
@@ -489,7 +607,6 @@ with st.expander("1) Hasta Kimlik, Cerrahi ve Klinik Bilgiler", expanded=True):
         ["Angina", "Dispne", "Senkop", "Kalp yetersizliği semptomu", "Yok"],
         default=["Yok"],
     )
-    symptom_text = ", ".join(symptoms) if symptoms and "Yok" not in symptoms else "Aktif kardiyak semptom tariflemiyor."
     functional_capacity = st.selectbox("Fonksiyonel kapasite (MET)", ["≥4 MET", "<4 MET", "Bilinmiyor"])
 
     st.markdown("---")
@@ -505,9 +622,47 @@ with st.expander("1) Hasta Kimlik, Cerrahi ve Klinik Bilgiler", expanded=True):
 
     has_dm = st.selectbox("Diabetes mellitus", ["Hayır", "Evet"])
     has_ht = st.selectbox("Hipertansiyon", ["Hayır", "Evet"])
+
+    # ----------------------------
+    # CAD/PCI + 1 year branching + monotherapy agent
+    # ----------------------------
     has_cad = st.selectbox("Koroner arter hastalığı / PCI öyküsü", ["Hayır", "Evet"])
 
+    pci_time = "—"
+    antiplatelet_strategy = "—"
+    mono_agent = "—"
+
+    if has_cad == "Evet":
+        pci_time = st.selectbox(
+            "PCI/AKS üzerinden 1 yıl geçti mi?",
+            ["<1 yıl", "≥1 yıl"],
+            index=0,
+            key="pci_time",
+        )
+        if pci_time == "<1 yıl":
+            antiplatelet_strategy = "DAPT (Tool-1)"
+            mono_agent = "—"
+        else:
+            antiplatelet_strategy = "Monoterapi"
+            mono_agent = st.selectbox("Monoterapi ajanı", ["Aspirin", "Klopidogrel"], index=0, key="mono_agent")
+
+            st.markdown("**Monoterapi – Preop Plan (Önizleme)**")
+            st.info(get_monotherapy_preop_plan(mono_agent, surgery_risk))
+
     has_mech_valve_ui = st.selectbox("Mekanik kapak var mı?", ["Hayır", "Evet"])
+
+    # Cardiac device logic
+    st.markdown("---")
+    has_device = st.selectbox("Hastada pacemaker/ICD/CRT var mı?", ["Hayır", "Evet"])
+    device_type = "—"
+    pace_dependent = "—"
+    if has_device == "Evet":
+        device_type = st.selectbox("Cihaz tipi", ["Permanent pacemaker", "ICD", "CRT"])
+        pace_dependent = st.selectbox("Hasta pace bağımlı mı?", ["Hayır", "Evet"])
+        device_note_preview = get_device_management_note(has_device, device_type, pace_dependent)
+        if device_note_preview.strip():
+            st.markdown("**Cihaz Yönetimi Uyarısı (Önizleme)**")
+            st.warning(device_note_preview)
 
     st.markdown("---")
     st.caption(DRUGS_CAPTION)
@@ -515,13 +670,16 @@ with st.expander("1) Hasta Kimlik, Cerrahi ve Klinik Bilgiler", expanded=True):
 
 
 # ----------------------------
-# 2) Tool-1 (DAPT) — only if CAD/PCI exists
+# 2) Tool-1 (DAPT) -> only if PCI <1 year
 # ----------------------------
-show_tool1 = (has_cad == "Evet")
+show_tool1 = (has_cad == "Evet") and (pci_time == "<1 yıl")
 
-with st.expander("2) Tool-1: DAPT (yalnızca KAH/PCI varsa)", expanded=show_tool1):
+with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_tool1):
     if not show_tool1:
-        st.info("Koroner arter hastalığı / PCI öyküsü **Hayır** seçildiği için Tool-1 (DAPT) algoritması gizlendi.")
+        if has_cad != "Evet":
+            st.info("Koroner arter hastalığı / PCI öyküsü **Hayır** seçildiği için Tool-1 (DAPT) algoritması gizlendi.")
+        else:
+            st.success("PCI/AKS üzerinden **≥1 yıl** geçtiği için **monoterapi** dalı aktif. Tool-1 (DAPT) uygulanmadı.")
         aspirin_dose = "—"
         p2y12_agent_ui = "—"
     else:
@@ -533,16 +691,17 @@ with st.expander("2) Tool-1: DAPT (yalnızca KAH/PCI varsa)", expanded=show_tool
         aspirin_dose = st.selectbox(
             "Aspirin günlük dozu",
             ["Bilinmiyor", "75 mg/gün", "81 mg/gün", "100 mg/gün", "150 mg/gün", "300 mg/gün"],
-            index=0
+            index=0,
+            key="aspirin_dose",
         )
         p2y12_agent_ui = st.selectbox(
             "P2Y12 inhibitörü (klinik kayıt)",
             ["Bilinmiyor", "Klopidogrel", "Prasugrel", "Tikagrelor"],
-            index=0
+            index=0,
+            key="p2y12_agent_ui",
         )
 
         st.markdown("---")
-
         answers = st.session_state["answers"]
         visible_questions = engine.get_visible_questions(answers)
 
@@ -554,7 +713,7 @@ with st.expander("2) Tool-1: DAPT (yalnızca KAH/PCI varsa)", expanded=show_tool
             answers[q.id] = val
 
         st.markdown("---")
-        if st.button("Tool-1 Sonucu Hesapla", key="btn_tool1"):
+        if st.button("Tool-1 Sonucu Göster (opsiyonel)", key="btn_tool1"):
             dapt_result = engine.evaluate(answers)
             st.session_state["dapt_result"] = dapt_result
             st.success(dapt_result.get("recommendation_tr", ""))
@@ -565,47 +724,64 @@ with st.expander("2) Tool-1: DAPT (yalnızca KAH/PCI varsa)", expanded=show_tool
 
 
 # ----------------------------
-# 3) Tool-2 (OAK/NOAC) — only if AF OR mechanical valve
+# 3) Tool-2 (OAK/NOAC)
 # ----------------------------
 show_tool2 = (has_af == "Evet") or (has_mech_valve_ui == "Evet")
+
+oac_agent = "Bilinmiyor"
+bleed_risk_oac = "Düşük-Orta"
+very_high_bleed = False
+high_te_risk = False
 
 with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=show_tool2):
     if not show_tool2:
         st.info("AF **Hayır** ve Mekanik kapak **Hayır** seçildiği için Tool-2 (OAK/NOAC) algoritması gizlendi.")
     else:
-        oac_agent = st.selectbox(
-            "Oral antikoagülan",
-            ["Bilinmiyor", "Warfarin", "Apiksaban", "Rivaroksaban", "Edoksaban", "Dabigatran"],
-            index=0
-        )
+        OAC_OPTIONS = ["Bilinmiyor", "Warfarin", "Apiksaban", "Rivaroksaban", "Edoksaban", "Dabigatran"]
+
+        if has_mech_valve_ui == "Evet":
+            oac_agent = st.selectbox(
+                "Oral antikoagülan",
+                OAC_OPTIONS,
+                index=OAC_OPTIONS.index("Warfarin"),
+                disabled=True,
+                help="Mekanik kapakta DOAC kullanılmaz; otomatik Warfarin seçildi.",
+                key="oac_agent",
+            )
+        else:
+            oac_agent = st.selectbox("Oral antikoagülan", OAC_OPTIONS, index=0, key="oac_agent")
 
         bleed_risk_oac = st.selectbox(
             "Prosedür kanama riski (OAK/NOAC için)",
             ["Minör", "Düşük-Orta", "Yüksek"],
-            index=1
+            index=1,
+            key="bleed_risk_oac",
         )
 
         very_high_bleed = st.checkbox(
             "Çok yüksek kanama riski (örn. spinal/epidural, intrakraniyal, vitreoretinal vb.)",
-            value=False
+            value=False,
+            key="very_high_bleed",
         )
 
         has_mech_valve = (has_mech_valve_ui == "Evet")
-
-        high_te_risk = False
         if has_mech_valve:
-            high_te_risk = st.selectbox(
-                "Yüksek tromboemboli riski var mı? (mekanik kapak + RF vb.)",
-                ["Hayır", "Evet"],
-                index=0
-            ) == "Evet"
+            high_te_risk = (
+                st.selectbox(
+                    "Yüksek tromboemboli riski var mı? (mekanik kapak + RF vb.)",
+                    ["Hayır", "Evet"],
+                    index=0,
+                    key="high_te_risk_ui",
+                )
+                == "Evet"
+            )
         else:
             st.caption("Not: Mekanik kapak yoksa bridging/TE risk değerlendirmesi genellikle daha sınırlıdır.")
+            high_te_risk = False
 
         st.markdown("---")
-        if st.button("Tool-2 Sonucu Hesapla", key="btn_tool2"):
+        if st.button("Tool-2 Sonucu Göster (opsiyonel)", key="btn_tool2"):
             mapped_bleed = "Düşük-Orta" if bleed_risk_oac in ["Minör", "Düşük-Orta"] else "Yüksek"
-
             res = oac_engine.evaluate(
                 agent=oac_agent,
                 urgency=urgency,
@@ -615,9 +791,7 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
                 has_mech_valve=has_mech_valve,
                 high_te_risk=high_te_risk,
             )
-            st.session_state["oac_result"] = res
 
-            # ---- DOAC doz/kesme uyarıları (EKLENDİ) ----
             dose_warnings = get_doac_dose_warnings(
                 agent=oac_agent,
                 age=int(patient_age or 0),
@@ -626,7 +800,6 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
                 bleed_risk=mapped_bleed,
                 very_high_bleed=very_high_bleed,
             )
-            st.session_state["oac_dose_warnings"] = dose_warnings
 
             st.write("### Tool-2 Çıktı")
             st.write(res.summary_tr)
@@ -634,6 +807,10 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
             st.write(res.bridging_tr)
             st.write(res.restart_plan_tr)
             st.caption(res.cautions_tr)
+
+            if has_mech_valve:
+                st.markdown("### Mekanik Kapak – Warfarin / EE Profilaksisi / Bridging Notu")
+                st.info(get_mech_valve_warfarin_note())
 
             if dose_warnings:
                 st.markdown("### DOAC Doz / Kesme Uyarıları")
@@ -645,53 +822,87 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
 
 
 # ----------------------------
-# 4) Konsültasyon Notu (always visible)
+# 4) Konsültasyon Notu (AUTO-CALC)
 # ----------------------------
 with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 birleşik)", expanded=True):
-
     if st.button("Öneri + Konsültasyon Notu Oluştur", key="btn_generate_all"):
-        # Tool-1 fallback (CAD yoksa)
+        # ---- Tool-1: auto evaluate if DAPT active ----
         if show_tool1:
-            dapt_result = st.session_state.get("dapt_result") or engine.evaluate(st.session_state.get("answers", {}))
+            dapt_result = engine.evaluate(st.session_state.get("answers", {}))
+            aspirin_val = st.session_state.get("aspirin_dose", "Bilinmiyor")
+            p2y12_val = st.session_state.get("p2y12_agent_ui", "Bilinmiyor")
         else:
-            dapt_result = {
-                "output_id": "tool1_hidden",
-                "recommendation_tr": "Tool-1 (DAPT) uygulanmadı: KAH/PCI öyküsü yok.",
-                "class": "",
-                "high_thrombotic_risk": "—",
-            }
+            # In monotherapy branch, we still fill a neutral Tool-1 section
+            if antiplatelet_strategy == "Monoterapi":
+                dapt_result = {
+                    "output_id": "mono_branch",
+                    "recommendation_tr": "Monoterapi dalı aktif (PCI ≥1 yıl). Tool-1 (DAPT) uygulanmadı.",
+                    "class": "",
+                }
+            else:
+                dapt_result = {
+                    "output_id": "tool1_hidden",
+                    "recommendation_tr": "Tool-1 (DAPT) uygulanmadı: KAH/PCI öyküsü yok veya PCI zamanı uygun değil.",
+                    "class": "",
+                }
+            aspirin_val = "—"
+            p2y12_val = "—"
 
-        # Tool-2 block + DOAC dose warnings (EKLENDİ)
-        oac_res = st.session_state.get("oac_result", None)
-        dose_warnings = st.session_state.get("oac_dose_warnings", [])
+        # ---- Device note ----
+        device_note = get_device_management_note(has_device, device_type, pace_dependent)
 
-        if show_tool2 and oac_res:
-            if dose_warnings:
-                oac_block = "\n".join([
+        # ---- Tool-2: AUTO evaluate on the fly ----
+        if show_tool2:
+            mapped_bleed = "Düşük-Orta" if bleed_risk_oac in ["Minör", "Düşük-Orta"] else "Yüksek"
+            has_mech_valve = (has_mech_valve_ui == "Evet")
+
+            oac_res = oac_engine.evaluate(
+                agent=("Warfarin" if has_mech_valve else oac_agent),
+                urgency=urgency,
+                bleed_risk=mapped_bleed,
+                very_high_bleed=very_high_bleed,
+                egfr=egfr,
+                has_mech_valve=has_mech_valve,
+                high_te_risk=high_te_risk,
+            )
+
+            dose_warnings = get_doac_dose_warnings(
+                agent=("Warfarin" if has_mech_valve else oac_agent),
+                age=int(patient_age or 0),
+                egfr=float(egfr or 0),
+                current_meds=current_meds,
+                bleed_risk=mapped_bleed,
+                very_high_bleed=very_high_bleed,
+            )
+
+            if has_mech_valve:
+                base_lines = [
+                    "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)",
+                    oac_res.summary_tr,
+                    "",
+                    get_mech_valve_warfarin_note(),
+                ]
+            else:
+                base_lines = [
                     "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)",
                     oac_res.summary_tr,
                     oac_res.stop_plan_tr,
                     oac_res.bridging_tr,
                     oac_res.restart_plan_tr,
+                ]
+
+            if dose_warnings:
+                base_lines += [
+                    "",
                     "F2-Not) DOAC Doz / Kesme Uyarıları:",
                     *[f"- {w}" for w in dose_warnings],
-                ])
-            else:
-                oac_block = "\n".join([
-                    "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)",
-                    oac_res.summary_tr,
-                    oac_res.stop_plan_tr,
-                    oac_res.bridging_tr,
-                    oac_res.restart_plan_tr,
-                ])
-        elif show_tool2 and not oac_res:
-            oac_block = "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)\n- Değerlendirilmedi / veri yok."
+                ]
+
+            oac_block = "\n".join([l for l in base_lines if l is not None and str(l).strip() != ""])
         else:
             oac_block = "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)\n- Tool-2 uygulanmadı: AF veya mekanik kapak yok."
 
         ctx = {
-            "patient_name": patient_name,
-            "patient_id": patient_id,
             "patient_age": patient_age,
             "patient_sex": patient_sex,
             "selected_surgery": selected_surgery,
@@ -701,7 +912,6 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 birleşik)", expanded=T
             "sbp": sbp,
             "dbp": dbp,
             "symptoms": symptoms,
-            "symptom_text": symptom_text,
             "functional_capacity": functional_capacity,
             "has_hf": has_hf,
             "nyha": nyha,
@@ -712,11 +922,17 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 birleşik)", expanded=T
             "has_dm": has_dm,
             "has_ht": has_ht,
             "has_cad": has_cad,
+            "pci_time": pci_time,
+            "antiplatelet_strategy": antiplatelet_strategy,
+            "mono_agent": mono_agent,
             "has_mech_valve": has_mech_valve_ui,
-            "aspirin_dose": aspirin_dose,
-            "p2y12_agent_ui": p2y12_agent_ui,
+            "has_device": has_device,
+            "device_type": device_type,
+            "pace_dependent": pace_dependent,
+            "aspirin_dose": aspirin_val,
+            "p2y12_agent_ui": p2y12_val,
             "current_meds": current_meds,
         }
 
-        note = generate_consultation_note(ctx, dapt_result, oac_block)
+        note = generate_consultation_note(ctx, dapt_result, oac_block, device_note)
         st.text_area("Kopyalanabilir çıktı", note, height=620)
