@@ -10,64 +10,59 @@ from core.oac_engine import OacRuleEngine
 
 
 # ----------------------------
-# Streamlit page config (MUTLAKA ilk st.* çağrısı)
+# Streamlit page config (ilk st.* çağrısı)
 # ----------------------------
 st.set_page_config(
     page_title="SynerCardioConsult",
-    page_icon="🫀",          # dosya verme (Cloud'da riskli)
+    page_icon="🫀",
     layout="centered",
 )
 
-# ----------------------------
-# Branding + Logo helpers
-# ----------------------------
 LOGO_PATH = "assets/logo.png"
 
 
-def safe_show_logo(
-    path: str,
-    *,
-    where: str = "main",                 # "main" | "sidebar"
-    width: int | None = None,
-    use_container_width: bool = False,
-):
+def safe_show_logo(path: str, *, where: str = "main", width: int | None = None):
     """
-    Logo bozuk/yanlış format olsa bile app'in çökmesini engellemeye çalışır.
-    NOT: Bu fonksiyon set_page_config'ten sonra çağrılmalı.
+    Streamlit sürüm uyumu için use_container_width kullanılmaz.
     """
-    if where == "sidebar":
-        target = st.sidebar
-    else:
-        target = st
+    target = st.sidebar if where == "sidebar" else st
 
     if not os.path.exists(path):
         return
 
-    # 1) Önce byte yöntemi (en stabil)
+    # 1) byte ile (en stabil)
     try:
         with open(path, "rb") as f:
             data = f.read()
-        target.image(data, width=width, use_container_width=use_container_width)
+        # width None ise Streamlit doğal boyutta render eder
+        if width is None:
+            target.image(data)
+        else:
+            target.image(data, width=width)
         return
     except Exception:
         pass
 
-    # 2) Olmazsa PIL ile dene
+    # 2) PIL fallback
     try:
         img = Image.open(path)
         img.load()
-        target.image(img, width=width, use_container_width=use_container_width)
+        if width is None:
+            target.image(img)
+        else:
+            target.image(img, width=width)
     except UnidentifiedImageError:
         target.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk.")
     except Exception as e:
         target.error(f"Logo yüklenemedi: {e}")
 
 
-# ----------------------------
-# Header / Sidebar branding (set_page_config'ten sonra)
-# ----------------------------
+# Sidebar logo (biraz büyük)
 safe_show_logo(LOGO_PATH, where="sidebar", width=220)
-safe_show_logo(LOGO_PATH, where="main", use_container_width=True)
+
+# Top banner logo (sayfayı kaplasın diye büyük width)
+# 1600x350 banner için centered layout'ta genelde 1000–1200 iyi durur
+safe_show_logo(LOGO_PATH, where="main", width=1100)
 
 st.markdown("<h1 style='text-align:center; margin:0;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
 st.markdown(
