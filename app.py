@@ -98,18 +98,7 @@ st.markdown(
 )
 st.divider()
 
-# Debug (opsiyonel)
-with st.expander("DEBUG logo", expanded=False):
-    st.write("LOGO_PATH:", LOGO_PATH)
-    st.write("exists:", os.path.exists(LOGO_PATH))
-    if os.path.exists(LOGO_PATH):
-        st.write("size:", os.path.getsize(LOGO_PATH))
-        try:
-            with open(LOGO_PATH, "rb") as f:
-                sig = f.read(8)
-            st.write("signature bytes:", sig)
-        except Exception as e:
-            st.write("signature read error:", e)
+
 
 
 # ----------------------------
