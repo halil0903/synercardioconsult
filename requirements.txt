@@ -1,2 +1,7 @@
 streamlit==1.37.1
 PyYAML==6.0.2
+streamlit
+pillow
+pyyaml
+pandas
+numpy
