@@ -10,58 +10,71 @@ from core.oac_engine import OacRuleEngine
 
 
 # ----------------------------
+# Streamlit page config (MUTLAKA ilk st.* çağrısı)
+# ----------------------------
+st.set_page_config(
+    page_title="SynerCardioConsult",
+    page_icon="🫀",          # dosya verme (Cloud'da riskli)
+    layout="centered",
+)
+
+# ----------------------------
 # Branding + Logo helpers
 # ----------------------------
 LOGO_PATH = "assets/logo.png"
 
-def safe_show_logo(path: str, *, where: str = "main", width: int | None = None, use_container_width: bool = False):
+
+def safe_show_logo(
+    path: str,
+    *,
+    where: str = "main",                 # "main" | "sidebar"
+    width: int | None = None,
+    use_container_width: bool = False,
+):
     """
-    where: "main" or "sidebar"
-    Bu fonksiyon logo bozuk/yanlış format olsa bile app'in çökmesini engellemeye çalışır.
+    Logo bozuk/yanlış format olsa bile app'in çökmesini engellemeye çalışır.
+    NOT: Bu fonksiyon set_page_config'ten sonra çağrılmalı.
     """
-    target = st.sidebar if where == "sidebar" else st
+    if where == "sidebar":
+        target = st.sidebar
+    else:
+        target = st
 
     if not os.path.exists(path):
-        # logo yoksa sessiz geç
         return
 
-    # Dosya çok küçükse genelde HTML/stub veya bozuk olur
-    try:
-        if os.path.getsize(path) < 500:
-            target.warning("Logo dosyası çok küçük/bozuk olabilir. PNG olarak yeniden export edin.")
-            return
-    except Exception:
-        pass
-
-    # PIL ile dene
-    try:
-        img = Image.open(path)
-        img.load()
-        target.image(img, width=width, use_container_width=use_container_width)
-        return
-    except UnidentifiedImageError:
-        target.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk (PIL tanıyamadı).")
-    except Exception as e:
-        target.error(f"Logo yüklenemedi: {e}")
-
-    # Byte ile son bir deneme
+    # 1) Önce byte yöntemi (en stabil)
     try:
         with open(path, "rb") as f:
             data = f.read()
         target.image(data, width=width, use_container_width=use_container_width)
-    except Exception:
-        # tamamen sessiz geç (çökmeyi engelle)
         return
+    except Exception:
+        pass
+
+    # 2) Olmazsa PIL ile dene
+    try:
+        img = Image.open(path)
+        img.load()
+        target.image(img, width=width, use_container_width=use_container_width)
+    except UnidentifiedImageError:
+        target.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk.")
+    except Exception as e:
+        target.error(f"Logo yüklenemedi: {e}")
 
 
 # ----------------------------
-# Streamlit page config (tek yerde!)
+# Header / Sidebar branding (set_page_config'ten sonra)
 # ----------------------------
-st.set_page_config(
-    page_title="SynerCardioConsult",
-    page_icon="🫀",
-    layout="centered",
+safe_show_logo(LOGO_PATH, where="sidebar", width=220)
+safe_show_logo(LOGO_PATH, where="main", use_container_width=True)
+
+st.markdown("<h1 style='text-align:center; margin:0;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<p style='text-align:center; color:gray; margin-top:6px;'>Preoperative Cardiology Consultation Tool</p>",
+    unsafe_allow_html=True
 )
+st.divider()
 
 # ----------------------------
 # Header (Logo + Centered title)
