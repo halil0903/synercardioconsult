@@ -3,8 +3,95 @@ import os
 from datetime import datetime
 
 import streamlit as st
+from PIL import Image, UnidentifiedImageError
+
 from core.engine import DaptRuleEngine
 from core.oac_engine import OacRuleEngine
+
+
+# ----------------------------
+# Branding + Logo helpers
+# ----------------------------
+LOGO_PATH = "assets/logo.png"
+
+def safe_show_logo(path: str, *, where: str = "main", width: int | None = None, use_container_width: bool = False):
+    """
+    where: "main" or "sidebar"
+    Bu fonksiyon logo bozuk/yanlış format olsa bile app'in çökmesini engellemeye çalışır.
+    """
+    target = st.sidebar if where == "sidebar" else st
+
+    if not os.path.exists(path):
+        # logo yoksa sessiz geç
+        return
+
+    # Dosya çok küçükse genelde HTML/stub veya bozuk olur
+    try:
+        if os.path.getsize(path) < 500:
+            target.warning("Logo dosyası çok küçük/bozuk olabilir. PNG olarak yeniden export edin.")
+            return
+    except Exception:
+        pass
+
+    # PIL ile dene
+    try:
+        img = Image.open(path)
+        img.load()
+        target.image(img, width=width, use_container_width=use_container_width)
+        return
+    except UnidentifiedImageError:
+        target.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk (PIL tanıyamadı).")
+    except Exception as e:
+        target.error(f"Logo yüklenemedi: {e}")
+
+    # Byte ile son bir deneme
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        target.image(data, width=width, use_container_width=use_container_width)
+    except Exception:
+        # tamamen sessiz geç (çökmeyi engelle)
+        return
+
+
+# ----------------------------
+# Streamlit page config (tek yerde!)
+# ----------------------------
+st.set_page_config(
+    page_title="SynerCardioConsult",
+    page_icon="🫀",
+    layout="centered",
+)
+
+# ----------------------------
+# Header (Logo + Centered title)
+# ----------------------------
+# İstersen Cloud debug için aç:
+with st.expander("DEBUG logo", expanded=False):
+    st.write("LOGO_PATH:", LOGO_PATH)
+    st.write("exists:", os.path.exists(LOGO_PATH))
+    if os.path.exists(LOGO_PATH):
+        st.write("size:", os.path.getsize(LOGO_PATH))
+        try:
+            with open(LOGO_PATH, "rb") as f:
+                sig = f.read(8)
+            st.write("signature bytes:", sig)
+        except Exception as e:
+            st.write("signature read error:", e)
+
+# Sidebar small logo
+safe_show_logo(LOGO_PATH, where="sidebar", width=220, use_container_width=False)
+
+# Top logo (uygulama genişliği kadar)
+safe_show_logo(LOGO_PATH, where="main", width=None, use_container_width=True)
+
+# Centered title/caption
+st.markdown("<h1 style='text-align:center; margin-top:10px;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<p style='text-align:center; color:gray; font-size:16px;'>Preoperative Cardiology Consultation Tool</p>",
+    unsafe_allow_html=True
+)
+st.divider()
 
 
 # ----------------------------
@@ -106,13 +193,11 @@ DEFAULT_DRUGS = sorted(
     )
 )
 
-
 def load_drug_list():
     csv_path = os.path.join("data", "sgk_ilaclar.csv")
     if os.path.exists(csv_path):
         try:
             import pandas as pd
-
             df = pd.read_csv(csv_path)
             if "drug_name" in df.columns:
                 drugs = df["drug_name"].dropna().astype(str).unique().tolist()
@@ -124,7 +209,6 @@ def load_drug_list():
         except Exception as e:
             return DEFAULT_DRUGS, f"İlaç listesi: varsayılan (CSV okunamadı: {e})"
     return DEFAULT_DRUGS, "İlaç listesi: varsayılan (CSV yok)"
-
 
 DRUGS, DRUGS_CAPTION = load_drug_list()
 
@@ -144,7 +228,6 @@ DOAC_INTERACT_EDOXABAN = {
     "ketokonazol",
     "ketoconazole",
 }
-
 
 def meds_contains_any(meds, needles_lower_set):
     meds_l = [m.lower() for m in (meds or [])]
@@ -166,7 +249,6 @@ RCRI_ITEMS_TR = {
     "cr_gt2": "Kreatinin >2.0 mg/dL (≈177 µmol/L)",
 }
 
-
 def calc_rcri(flags: dict) -> tuple[int, list[str]]:
     positives = []
     score = 0
@@ -175,7 +257,6 @@ def calc_rcri(flags: dict) -> tuple[int, list[str]]:
             score += 1
             positives.append(label)
     return score, positives
-
 
 def esc_rcri_pathway_summary(
     surgery_risk: str,
@@ -213,9 +294,7 @@ def esc_rcri_pathway_summary(
         )
 
     if unstable_flag:
-        pathway_lines.append(
-            "Aktif/önemli semptom varsa → öncelik kardiyak stabilizasyon ve endikasyona göre ileri değerlendirme."
-        )
+        pathway_lines.append("Aktif/önemli semptom varsa → öncelik kardiyak stabilizasyon ve endikasyona göre ileri değerlendirme.")
         workup.append("Kardiyoloji değerlendirmesi (management-changing yaklaşım).")
         workup.append("Endikasyona göre TTE (özellikle KY/dispne/üfürüm/EF bilinmiyor ise).")
         if high_risk_surg or intermediate_surg:
@@ -239,14 +318,10 @@ def esc_rcri_pathway_summary(
             workup.append("Klinik/endikasyona göre TTE (EF/kapak hastalığı/dispne varlığında öncelikli).")
 
         if high_risk_surg or rcri_score >= 2 or (poor_fc or unknown_fc):
-            workup.append(
-                "BNP/NT-proBNP (özellikle ≥65 yaş veya orta/yüksek risk cerrahide risk katmanlaması için düşünülebilir)."
-            )
+            workup.append("BNP/NT-proBNP (özellikle ≥65 yaş veya orta/yüksek risk cerrahide risk katmanlaması için düşünülebilir).")
 
         if (high_risk_surg or rcri_score >= 2) and (poor_fc or unknown_fc) and urgency != "Acil":
-            workup.append(
-                "Efor kapasitesi düşük/bilinmiyor + yüksek/orta risk: sadece sonucu değiştirecekse non-invaziv iskemi testi düşünülebilir."
-            )
+            workup.append("Efor kapasitesi düşük/bilinmiyor + yüksek/orta risk: sadece sonucu değiştirecekse non-invaziv iskemi testi düşünülebilir.")
 
         pathway_lines.append("Test seçimi: sadece sonucu/tedaviyi değiştirecek (management-changing) ise.")
         return "\n".join([f"- {x}" for x in pathway_lines]), workup
@@ -638,103 +713,8 @@ I) Sonuç / Plan
 
 
 # ----------------------------
-# Streamlit UI — SINGLE PAGE (Branding + Logo)
-# Optimized for 1600x350 transparent PNG logo
-# ----------------------------
-
-import streamlit as st
-import os
-import os
-import streamlit as st
-from PIL import Image, UnidentifiedImageError
-
-LOGO_PATH = "assets/logo.png"
-
-# ----------------------------
-# DEBUG (Cloud'da logo teşhisi)
-# ----------------------------
-with st.expander("DEBUG logo", expanded=False):
-    st.write("LOGO_PATH:", LOGO_PATH)
-    st.write("exists:", os.path.exists(LOGO_PATH))
-    if os.path.exists(LOGO_PATH):
-        st.write("size:", os.path.getsize(LOGO_PATH))
-        with open(LOGO_PATH, "rb") as f:
-            sig = f.read(8)
-        st.write("signature bytes:", sig)
-
-# ----------------------------
-# Streamlit page config
-# ----------------------------
-st.set_page_config(
-    page_title="SynerCardioConsult",
-    page_icon="🫀",   # logo yerine emoji daha stabil
-    layout="centered"
-)
-
-# ----------------------------
-# Güvenli logo gösterme fonksiyonu
-# ----------------------------
-def safe_st_image(path, use_container_width=False, width=None):
-
-    if not os.path.exists(path):
-        st.warning(f"Logo bulunamadı: {path}")
-        return
-
-    try:
-        img = Image.open(path)
-        img.load()
-        st.image(img, use_container_width=use_container_width, width=width)
-
-    except UnidentifiedImageError:
-        st.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk.")
-
-    except Exception as e:
-        st.error(f"Logo yüklenemedi: {e}")
-
-
-# ----------------------------
-# Sidebar logo
-# ----------------------------
-safe_st_image(LOGO_PATH, width=220)
-
-# ----------------------------
-# Main header logo
-# ----------------------------
-safe_st_image(LOGO_PATH, use_container_width=True)
-
-# ----------------------------
-# Başlık
-# ----------------------------
-st.markdown(
-    "<h1 style='text-align:center;'>SynerCardioConsult</h1>",
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    "<p style='text-align:center; color:gray;'>Preoperative Cardiology Consultation Tool</p>",
-    unsafe_allow_html=True
-)
-# Centered title
-st.markdown(
-"""
-<h1 style='text-align:center; margin-top:10px;'>
-SynerCardioConsult
-</h1>
-""",
-unsafe_allow_html=True
-)
-
-# Centered subtitle
-st.markdown(
-"""
-<p style='text-align:center; font-size:18px; color:gray;'>
-Preoperative Cardiology Consultation Tool
-</p>
-""",
-unsafe_allow_html=True
-)
-
 # rules/dapt.yaml var mı?
+# ----------------------------
 if not os.path.exists("rules/dapt.yaml"):
     st.error("rules/dapt.yaml bulunamadı. Repo içinde rules/dapt.yaml yolunu kontrol et.")
     st.stop()
@@ -942,7 +922,7 @@ with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_to
         st.markdown("---")
         answers = st.session_state["answers"]
 
-        # YAML çoğunlukla answers["p2y12_agent"] bekler → map'liyoruz
+        # YAML çoğunlukla answers["p2y12_agent"] bekler → map
         if p2y12_agent_ui and p2y12_agent_ui != "Bilinmiyor":
             answers["p2y12_agent"] = p2y12_agent_ui
         if aspirin_dose and aspirin_dose != "Bilinmiyor":
@@ -1085,7 +1065,6 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
         # Tool-1 auto
         if show_tool1:
             answers = st.session_state.get("answers", {})
-            # mapping (konsültasyon butonunda da garanti)
             if st.session_state.get("p2y12_agent_ui", "Bilinmiyor") != "Bilinmiyor":
                 answers["p2y12_agent"] = st.session_state.get("p2y12_agent_ui")
             if st.session_state.get("aspirin_dose", "Bilinmiyor") != "Bilinmiyor":
@@ -1224,9 +1203,11 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
         )
         st.text_area("Kopyalanabilir çıktı", note, height=760)
 
-    # ----------------------------
-# Footer (Always visible)
+
 # ----------------------------
+# FOOTER (always visible)
+# ----------------------------
+st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
 
 st.markdown(
 """
@@ -1242,11 +1223,12 @@ text-align: center;
 padding: 10px;
 font-size: 13px;
 border-top: 1px solid #e6e6e6;
+z-index: 9999;
 }
 </style>
 
 <div class="footer">
-SynerCardioConsult v1.0 | © 2026  Halil Siner,MD – All rights reserved
+<b>SynerCardioConsult</b> v1.0 | © 2026 Dr. Halil Siner – All rights reserved
 </div>
 """,
 unsafe_allow_html=True
