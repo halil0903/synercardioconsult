@@ -88,7 +88,7 @@ with st.expander("DEBUG logo", expanded=False):
             st.write("signature read error:", e)
 
 # Sidebar small logo
-safe_show_logo(LOGO_PATH, where="sidebar", width=220, use_container_width=False)
+safe_show_logo(LOGO_PATH, where="sidebar", width=220)
 
 # Top logo (uygulama genişliği kadar)
 safe_show_logo(LOGO_PATH, where="main", width=None, use_container_width=True)
