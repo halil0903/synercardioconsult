@@ -661,7 +661,7 @@ if os.path.exists(LOGO_PATH):
 if os.path.exists(LOGO_PATH):
     from PIL import Image, UnidentifiedImageError
 
-def safe_st_image(path: str, *, use_container_width: bool = False, width: int | None = None):
+def safe_st_image(safe_st_image(LOGO_PATH, use_container_width=True):
     if not os.path.exists(path):
         st.warning(f"Logo bulunamadı: {path}")
         return
