@@ -1,5 +1,6 @@
 # app.py
 import os
+import inspect
 from datetime import datetime
 
 import streamlit as st
@@ -21,24 +22,51 @@ st.set_page_config(
 LOGO_PATH = "assets/logo.png"
 
 
-def safe_show_logo(path: str, *, where: str = "main", width: int | None = None):
+# ----------------------------
+# Streamlit image compat helpers (use_container_width / use_column_width)
+# ----------------------------
+def _image_compat(target, img_or_bytes, *, width=None, use_container_width=False):
     """
-    Streamlit sürüm uyumu için use_container_width kullanılmaz.
+    Streamlit sürüm uyumu:
+    - Yeni sürümler: use_container_width
+    - Eski sürümler: use_column_width
+    """
+    sig = inspect.signature(target.image)
+    params = sig.parameters
+
+    kwargs = {}
+    if width is not None:
+        kwargs["width"] = width
+    else:
+        if use_container_width:
+            if "use_container_width" in params:
+                kwargs["use_container_width"] = True
+            elif "use_column_width" in params:
+                kwargs["use_column_width"] = True
+
+    return target.image(img_or_bytes, **kwargs)
+
+
+def safe_show_logo(
+    path: str,
+    *,
+    where: str = "main",
+    width: int | None = None,
+    use_container_width: bool = False,
+):
+    """
+    Logo gösterimini bozuk dosya / farklı Streamlit sürümü durumlarında da çökmeden yönetir.
     """
     target = st.sidebar if where == "sidebar" else st
 
-    if not os.path.exists(path):
+    if not path or not os.path.exists(path):
         return
 
     # 1) byte ile (en stabil)
     try:
         with open(path, "rb") as f:
             data = f.read()
-        # width None ise Streamlit doğal boyutta render eder
-        if width is None:
-            target.image(data)
-        else:
-            target.image(data, width=width)
+        _image_compat(target, data, width=width, use_container_width=use_container_width)
         return
     except Exception:
         pass
@@ -47,22 +75,21 @@ def safe_show_logo(path: str, *, where: str = "main", width: int | None = None):
     try:
         img = Image.open(path)
         img.load()
-        if width is None:
-            target.image(img)
-        else:
-            target.image(img, width=width)
+        _image_compat(target, img, width=width, use_container_width=use_container_width)
     except UnidentifiedImageError:
         target.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk.")
     except Exception as e:
         target.error(f"Logo yüklenemedi: {e}")
 
 
-# Sidebar logo (biraz büyük)
+# ----------------------------
+# Header (SINGLE) : Sidebar logo + Top banner + Title
+# ----------------------------
+# Sidebar logo
+safe_show_logo(LOGO_PATH, where="sidebar", width=220)
 
-
-# Top banner logo (sayfayı kaplasın diye büyük width)
-# 1600x350 banner için centered layout'ta genelde 1000–1200 iyi durur
-safe_show_logo(LOGO_PATH, where="main", width=1100)
+# Top banner logo (container width)
+safe_show_logo(LOGO_PATH, where="main", width=None, use_container_width=True)
 
 st.markdown("<h1 style='text-align:center; margin:0;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
 st.markdown(
@@ -71,10 +98,7 @@ st.markdown(
 )
 st.divider()
 
-# ----------------------------
-# Header (Logo + Centered title)
-# ----------------------------
-# İstersen Cloud debug için aç:
+# Debug (opsiyonel)
 with st.expander("DEBUG logo", expanded=False):
     st.write("LOGO_PATH:", LOGO_PATH)
     st.write("exists:", os.path.exists(LOGO_PATH))
@@ -86,20 +110,6 @@ with st.expander("DEBUG logo", expanded=False):
             st.write("signature bytes:", sig)
         except Exception as e:
             st.write("signature read error:", e)
-
-# Sidebar small logo
-
-
-# Top logo (uygulama genişliği kadar)
-safe_show_logo(LOGO_PATH, where="main", width=None)
-
-# Centered title/caption
-st.markdown("<h1 style='text-align:center; margin-top:10px;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
-st.markdown(
-    "<p style='text-align:center; color:gray; font-size:16px;'>Preoperative Cardiology Consultation Tool</p>",
-    unsafe_allow_html=True
-)
-st.divider()
 
 
 # ----------------------------
@@ -201,22 +211,28 @@ DEFAULT_DRUGS = sorted(
     )
 )
 
+
 def load_drug_list():
     csv_path = os.path.join("data", "sgk_ilaclar.csv")
     if os.path.exists(csv_path):
         try:
             import pandas as pd
+
             df = pd.read_csv(csv_path)
+            if df.empty:
+                return DEFAULT_DRUGS, "İlaç listesi: varsayılan (CSV boş)"
             if "drug_name" in df.columns:
                 drugs = df["drug_name"].dropna().astype(str).unique().tolist()
             else:
                 drugs = df.iloc[:, 0].dropna().astype(str).unique().tolist()
-            drugs = sorted(set([d.strip() for d in drugs if d.strip()]))
+
+            drugs = sorted(set([d.strip() for d in drugs if d and str(d).strip()]))
             if drugs:
                 return drugs, f"İlaç listesi: data/sgk_ilaclar.csv ({len(drugs)} kayıt)"
         except Exception as e:
             return DEFAULT_DRUGS, f"İlaç listesi: varsayılan (CSV okunamadı: {e})"
     return DEFAULT_DRUGS, "İlaç listesi: varsayılan (CSV yok)"
+
 
 DRUGS, DRUGS_CAPTION = load_drug_list()
 
@@ -236,6 +252,7 @@ DOAC_INTERACT_EDOXABAN = {
     "ketokonazol",
     "ketoconazole",
 }
+
 
 def meds_contains_any(meds, needles_lower_set):
     meds_l = [m.lower() for m in (meds or [])]
@@ -257,6 +274,7 @@ RCRI_ITEMS_TR = {
     "cr_gt2": "Kreatinin >2.0 mg/dL (≈177 µmol/L)",
 }
 
+
 def calc_rcri(flags: dict) -> tuple[int, list[str]]:
     positives = []
     score = 0
@@ -265,6 +283,7 @@ def calc_rcri(flags: dict) -> tuple[int, list[str]]:
             score += 1
             positives.append(label)
     return score, positives
+
 
 def esc_rcri_pathway_summary(
     surgery_risk: str,
@@ -302,7 +321,9 @@ def esc_rcri_pathway_summary(
         )
 
     if unstable_flag:
-        pathway_lines.append("Aktif/önemli semptom varsa → öncelik kardiyak stabilizasyon ve endikasyona göre ileri değerlendirme.")
+        pathway_lines.append(
+            "Aktif/önemli semptom varsa → öncelik kardiyak stabilizasyon ve endikasyona göre ileri değerlendirme."
+        )
         workup.append("Kardiyoloji değerlendirmesi (management-changing yaklaşım).")
         workup.append("Endikasyona göre TTE (özellikle KY/dispne/üfürüm/EF bilinmiyor ise).")
         if high_risk_surg or intermediate_surg:
@@ -326,10 +347,14 @@ def esc_rcri_pathway_summary(
             workup.append("Klinik/endikasyona göre TTE (EF/kapak hastalığı/dispne varlığında öncelikli).")
 
         if high_risk_surg or rcri_score >= 2 or (poor_fc or unknown_fc):
-            workup.append("BNP/NT-proBNP (özellikle ≥65 yaş veya orta/yüksek risk cerrahide risk katmanlaması için düşünülebilir).")
+            workup.append(
+                "BNP/NT-proBNP (özellikle ≥65 yaş veya orta/yüksek risk cerrahide risk katmanlaması için düşünülebilir)."
+            )
 
         if (high_risk_surg or rcri_score >= 2) and (poor_fc or unknown_fc) and urgency != "Acil":
-            workup.append("Efor kapasitesi düşük/bilinmiyor + yüksek/orta risk: sadece sonucu değiştirecekse non-invaziv iskemi testi düşünülebilir.")
+            workup.append(
+                "Efor kapasitesi düşük/bilinmiyor + yüksek/orta risk: sadece sonucu değiştirecekse non-invaziv iskemi testi düşünülebilir."
+            )
 
         pathway_lines.append("Test seçimi: sadece sonucu/tedaviyi değiştirecek (management-changing) ise.")
         return "\n".join([f"- {x}" for x in pathway_lines]), workup
@@ -509,29 +534,6 @@ def get_af_rate_control_text(has_af: str, hr: int, has_hf: str, lvef: str, curre
         lines.append(brady_note.strip())
 
     return "\n".join(lines) + "\n"
-
-
-def get_postop_af_risk_text(age: int, has_hf: str, has_ckd: str, surgery_risk: str, hr: int) -> str:
-    flags = 0
-    if age >= 70:
-        flags += 1
-    if has_hf == "Evet":
-        flags += 1
-    if has_ckd == "Evet":
-        flags += 1
-    if surgery_risk == "Yüksek":
-        flags += 1
-    if hr >= 100:
-        flags += 1
-
-    if flags >= 3:
-        risk_level = "artmış"
-    elif flags == 2:
-        risk_level = "orta"
-    else:
-        risk_level = "düşük/orta"
-
-    return f"- Postop AF/aritmi riski: {risk_level}. İlk 48–72 saatte ritim/HR ve elektrolitlerin yakın izlenmesi önerilir."
 
 
 # ----------------------------
@@ -831,7 +833,11 @@ with st.expander("1) Hasta Yaş, Cerrahi ve Klinik Bilgiler", expanded=True):
 
     colr1, colr2 = st.columns(2)
     with colr1:
-        rcri_high_risk_surgery = st.checkbox(RCRI_ITEMS_TR["high_risk_surgery"], value=default_high_risk_surgery, key="rcri_high_risk_surgery")
+        rcri_high_risk_surgery = st.checkbox(
+            RCRI_ITEMS_TR["high_risk_surgery"],
+            value=default_high_risk_surgery,
+            key="rcri_high_risk_surgery",
+        )
         rcri_ihd = st.checkbox(RCRI_ITEMS_TR["ihd"], value=(has_cad == "Evet"), key="rcri_ihd")
         rcri_chf = st.checkbox(RCRI_ITEMS_TR["chf"], value=(has_hf == "Evet"), key="rcri_chf")
     with colr2:
@@ -896,10 +902,15 @@ with st.expander("1) Hasta Yaş, Cerrahi ve Klinik Bilgiler", expanded=True):
 
 
 # ----------------------------
-# 2) Tool-1 (DAPT) -> only if PCI <1 year
+# Tool init (after shared inputs)
 # ----------------------------
 show_tool1 = (has_cad == "Evet") and (pci_time == "<1 yıl")
+show_tool2 = (has_af == "Evet") or (has_mech_valve_ui == "Evet")
 
+
+# ----------------------------
+# 2) Tool-1 (DAPT) -> only if PCI <1 year
+# ----------------------------
 with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_tool1):
     if not show_tool1:
         if has_cad != "Evet":
@@ -930,7 +941,6 @@ with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_to
         st.markdown("---")
         answers = st.session_state["answers"]
 
-        # YAML çoğunlukla answers["p2y12_agent"] bekler → map
         if p2y12_agent_ui and p2y12_agent_ui != "Bilinmiyor":
             answers["p2y12_agent"] = p2y12_agent_ui
         if aspirin_dose and aspirin_dose != "Bilinmiyor":
@@ -967,8 +977,6 @@ with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_to
 # ----------------------------
 # 3) Tool-2 (OAK/NOAC)
 # ----------------------------
-show_tool2 = (has_af == "Evet") or (has_mech_valve_ui == "Evet")
-
 oac_agent = "Bilinmiyor"
 bleed_risk_oac = "Düşük-Orta"
 very_high_bleed = False
@@ -1218,7 +1226,7 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
 st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
 
 st.markdown(
-"""
+    """
 <style>
 .footer {
 position: fixed;
@@ -1239,5 +1247,5 @@ z-index: 9999;
 <b>SynerCardioConsult</b> v1.0 | © 2026 Dr. Halil Siner – All rights reserved
 </div>
 """,
-unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
