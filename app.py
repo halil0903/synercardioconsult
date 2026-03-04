@@ -99,8 +99,6 @@ st.markdown(
 st.divider()
 
 
-
-
 # ----------------------------
 # TABLE 5 (ESC) -> Surgery list & risk mapping
 # ----------------------------
