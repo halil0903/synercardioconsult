@@ -58,7 +58,7 @@ def safe_show_logo(path: str, *, where: str = "main", width: int | None = None):
 
 
 # Sidebar logo (biraz büyük)
-safe_show_logo(LOGO_PATH, where="sidebar", width=220)
+
 
 # Top banner logo (sayfayı kaplasın diye büyük width)
 # 1600x350 banner için centered layout'ta genelde 1000–1200 iyi durur
@@ -88,10 +88,10 @@ with st.expander("DEBUG logo", expanded=False):
             st.write("signature read error:", e)
 
 # Sidebar small logo
-safe_show_logo(LOGO_PATH, where="sidebar", width=220)
+
 
 # Top logo (uygulama genişliği kadar)
-safe_show_logo(LOGO_PATH, where="main", width=None, use_container_width=True)
+safe_show_logo(LOGO_PATH, where="main", width=None)
 
 # Centered title/caption
 st.markdown("<h1 style='text-align:center; margin-top:10px;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
