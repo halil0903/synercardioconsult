@@ -644,24 +644,38 @@ I) Sonuç / Plan
 
 import streamlit as st
 import os
+import os
+import streamlit as st
+from PIL import Image, UnidentifiedImageError
 
 LOGO_PATH = "assets/logo.png"
 
+# ----------------------------
+# DEBUG (Cloud'da logo teşhisi)
+# ----------------------------
+with st.expander("DEBUG logo", expanded=False):
+    st.write("LOGO_PATH:", LOGO_PATH)
+    st.write("exists:", os.path.exists(LOGO_PATH))
+    if os.path.exists(LOGO_PATH):
+        st.write("size:", os.path.getsize(LOGO_PATH))
+        with open(LOGO_PATH, "rb") as f:
+            sig = f.read(8)
+        st.write("signature bytes:", sig)
+
+# ----------------------------
+# Streamlit page config
+# ----------------------------
 st.set_page_config(
     page_title="SynerCardioConsult",
-    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🫀",
+    page_icon="🫀",   # logo yerine emoji daha stabil
     layout="centered"
 )
 
-# Sidebar logo
-if os.path.exists(LOGO_PATH):
-    st.sidebar.image(LOGO_PATH, width=220)
+# ----------------------------
+# Güvenli logo gösterme fonksiyonu
+# ----------------------------
+def safe_st_image(path, use_container_width=False, width=None):
 
-# Main header logo (application width)
-if os.path.exists(LOGO_PATH):
-    from PIL import Image, UnidentifiedImageError
-
-def safe_st_image(safe_st_image(LOGO_PATH, use_container_width=True):
     if not os.path.exists(path):
         st.warning(f"Logo bulunamadı: {path}")
         return
@@ -670,11 +684,36 @@ def safe_st_image(safe_st_image(LOGO_PATH, use_container_width=True):
         img = Image.open(path)
         img.load()
         st.image(img, use_container_width=use_container_width, width=width)
+
     except UnidentifiedImageError:
-        st.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk. assets/logo.png'i yeniden export edin.")
+        st.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk.")
+
     except Exception as e:
         st.error(f"Logo yüklenemedi: {e}")
 
+
+# ----------------------------
+# Sidebar logo
+# ----------------------------
+safe_st_image(LOGO_PATH, width=220)
+
+# ----------------------------
+# Main header logo
+# ----------------------------
+safe_st_image(LOGO_PATH, use_container_width=True)
+
+# ----------------------------
+# Başlık
+# ----------------------------
+st.markdown(
+    "<h1 style='text-align:center;'>SynerCardioConsult</h1>",
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    "<p style='text-align:center; color:gray;'>Preoperative Cardiology Consultation Tool</p>",
+    unsafe_allow_html=True
+)
 # Centered title
 st.markdown(
 """
