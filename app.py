@@ -659,7 +659,21 @@ if os.path.exists(LOGO_PATH):
 
 # Main header logo (application width)
 if os.path.exists(LOGO_PATH):
-    st.image(LOGO_PATH, use_container_width=True)
+    from PIL import Image, UnidentifiedImageError
+
+def safe_st_image(path: str, *, use_container_width: bool = False, width: int | None = None):
+    if not os.path.exists(path):
+        st.warning(f"Logo bulunamadı: {path}")
+        return
+
+    try:
+        img = Image.open(path)
+        img.load()
+        st.image(img, use_container_width=use_container_width, width=width)
+    except UnidentifiedImageError:
+        st.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk. assets/logo.png'i yeniden export edin.")
+    except Exception as e:
+        st.error(f"Logo yüklenemedi: {e}")
 
 # Centered title
 st.markdown(
