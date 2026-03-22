@@ -752,6 +752,26 @@ st.set_page_config(
     layout="centered"
 )
 
+# ----------------------------
+# PWA Support (manifest + service worker)
+# ----------------------------
+PWA_META = """
+<link rel="manifest" href="app/static/manifest.json" />
+<meta name="theme-color" content="#1f77b4" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="CardioConsult" />
+<link rel="apple-touch-icon" href="app/static/icon-192.png" />
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('app/static/sw.js')
+        .then(function(reg) { console.log('SW registered:', reg.scope); })
+        .catch(function(err) { console.log('SW registration failed:', err); });
+}
+</script>
+"""
+st.markdown(PWA_META, unsafe_allow_html=True)
+
 # Sidebar logo
 if os.path.exists(LOGO_PATH):
     try:
