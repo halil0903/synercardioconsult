@@ -270,7 +270,7 @@ def esc_rcri_pathway_summary(
 def get_mech_valve_warfarin_note() -> str:
     return "\n".join(
         [
-            "MEKANİK KAPAK – WARFARİN YÖNETİMİ ve ENFEKTİF ENDOKARDİT PROFİLAKSİSİ ",
+            "MEKANİK KAPAK – WARFARİN YÖNETİMİ ve ENFEKTİF ENDOKARDİT PROFİLAKSİSİ (Otomatik Not)",
             "- Warfarin operasyon tarihinden **5 gün önce kesilmelidir**.",
             "- Operasyon sabahı hedef **INR < 1.5** olacak şekilde planlama yapılmalıdır.",
             "- INR operasyon öncesi gün kontrol edilmelidir.",
@@ -738,11 +738,17 @@ st.set_page_config(
 
 # Sidebar logo
 if os.path.exists(LOGO_PATH):
-    st.sidebar.image(LOGO_PATH, width=220)
+    try:
+        st.sidebar.image(LOGO_PATH, width=220)
+    except Exception:
+        pass
 
 # Main header logo (application width)
 if os.path.exists(LOGO_PATH):
-    st.image(LOGO_PATH, use_container_width=True)
+    try:
+        st.image(LOGO_PATH, use_container_width=True)
+    except TypeError:
+        st.image(LOGO_PATH, use_column_width=True)
 
 # Centered title
 st.markdown(
