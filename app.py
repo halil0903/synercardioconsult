@@ -302,20 +302,26 @@ def get_device_management_note(has_device: str, device_type: str, pace_dependent
     dt = (device_type or "").strip()
     pd = (pace_dependent or "").strip()
 
+    electrocautery_note = (
+        "- Elektrokoter: Etkili en düşük enerjiyle ve kısa atımlarla (<5 sn), "
+        "cihazdan uzakta (>15 cm), kalem veya stilus ile çalıştırılan bipolar elektrokoter kullanımı "
+        "cihazla interferans riskini en aza indirebilir.\n"
+    )
+
     if dt not in {"Permanent pacemaker", "ICD", "CRT"}:
-        return "- Cihaz: Belirtilmedi.\n"
+        return "- Cihaz: Belirtilmedi.\n" + electrocautery_note
 
     if pd not in {"Evet", "Hayır"}:
-        return f"- Cihaz: {dt}. Pace bağımlılığı belirtilmedi.\n"
+        return f"- Cihaz: {dt}. Pace bağımlılığı belirtilmedi.\n" + electrocautery_note
 
     if dt == "Permanent pacemaker":
         if pd == "Evet":
-            return "- Cihaz: Permanent pacemaker. **Pace bağımlı** → **VOO 80 bpm** moduna alınmalı (perioperatif plan).\n"
-        return "- Cihaz: Permanent pacemaker. Pace bağımlı değil → **VVI 40 bpm** alınmalı (perioperatif plan).\n"
+            return "- Cihaz: Permanent pacemaker. **Pace bağımlı** → **VOO 80 bpm** moduna alınmalı (perioperatif plan).\n" + electrocautery_note
+        return "- Cihaz: Permanent pacemaker. Pace bağımlı değil → **VVI 40 bpm** alınmalı (perioperatif plan).\n" + electrocautery_note
 
     if pd == "Evet":
-        return f"- Cihaz: {dt}. **Pace bağımlı** → **Taşi-terapiler kapatılmalı** + **VOO 80 bpm** moduna alınmalı.\n"
-    return f"- Cihaz: {dt}. Pace bağımlı değil → **Taşi-terapiler kapatılmalı** + **VVI 40 bpm** alınmalı.\n"
+        return f"- Cihaz: {dt}. **Pace bağımlı** → **Taşi-terapiler kapatılmalı** + **VOO 80 bpm** moduna alınmalı.\n" + electrocautery_note
+    return f"- Cihaz: {dt}. Pace bağımlı değil → **Taşi-terapiler kapatılmalı** + **VVI 40 bpm** alınmalı.\n" + electrocautery_note
 
 
 def get_bradycardia_meds_note(hr: int, has_hf: str, current_meds: list[str]) -> str:
@@ -675,6 +681,16 @@ D) Risk Katmanlama (RCRI + ESC)
         clinical_lines.append(ckd_line)
     if device_note and device_note.strip():
         clinical_lines.append(device_note.strip())
+
+    # Statin recommendation for CAD patients
+    if context.get("has_cad") == "Evet":
+        statin_names = {"atorvastatin", "rosuvastatin"}
+        on_statin = any(any(s in m.lower() for s in statin_names) for m in meds)
+        if on_statin:
+            clinical_lines.append("- Statin: KAH mevcut, statin tedavisi devam etmeli. Perioperatif dönemde kesilmemelidir.")
+        else:
+            clinical_lines.append("- Statin: KAH mevcut ancak statin kullanımı belirtilmemiş. Yüksek yoğunluklu statin tedavisi (Atorvastatin 40–80 mg veya Rosuvastatin 20–40 mg) başlanması önerilir.")
+
     clinical_section = "\n".join(clinical_lines) if clinical_lines else "- Ek klinik not yok."
 
     # Build DAPT recommendation line (only if engine produced meaningful output)
