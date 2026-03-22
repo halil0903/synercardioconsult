@@ -1,102 +1,10 @@
 # app.py
 import os
-import inspect
 from datetime import datetime
 
 import streamlit as st
-from PIL import Image, UnidentifiedImageError
-
 from core.engine import DaptRuleEngine
 from core.oac_engine import OacRuleEngine
-
-
-# ----------------------------
-# Streamlit page config (ilk st.* çağrısı)
-# ----------------------------
-st.set_page_config(
-    page_title="SynerCardioConsult",
-    page_icon="🫀",
-    layout="centered",
-)
-
-LOGO_PATH = "assets/logo.png"
-
-
-# ----------------------------
-# Streamlit image compat helpers (use_container_width / use_column_width)
-# ----------------------------
-def _image_compat(target, img_or_bytes, *, width=None, use_container_width=False):
-    """
-    Streamlit sürüm uyumu:
-    - Yeni sürümler: use_container_width
-    - Eski sürümler: use_column_width
-    """
-    sig = inspect.signature(target.image)
-    params = sig.parameters
-
-    kwargs = {}
-    if width is not None:
-        kwargs["width"] = width
-    else:
-        if use_container_width:
-            if "use_container_width" in params:
-                kwargs["use_container_width"] = True
-            elif "use_column_width" in params:
-                kwargs["use_column_width"] = True
-
-    return target.image(img_or_bytes, **kwargs)
-
-
-def safe_show_logo(
-    path: str,
-    *,
-    where: str = "main",
-    width: int | None = None,
-    use_container_width: bool = False,
-):
-    """
-    Logo gösterimini bozuk dosya / farklı Streamlit sürümü durumlarında da çökmeden yönetir.
-    """
-    target = st.sidebar if where == "sidebar" else st
-
-    if not path or not os.path.exists(path):
-        return
-
-    # 1) byte ile (en stabil)
-    try:
-        with open(path, "rb") as f:
-            data = f.read()
-        _image_compat(target, data, width=width, use_container_width=use_container_width)
-        return
-    except Exception:
-        pass
-
-    # 2) PIL fallback
-    try:
-        img = Image.open(path)
-        img.load()
-        _image_compat(target, img, width=width, use_container_width=use_container_width)
-    except UnidentifiedImageError:
-        target.error("Logo dosyası geçerli bir PNG/JPG değil veya bozuk.")
-    except Exception as e:
-        target.error(f"Logo yüklenemedi: {e}")
-
-
-# ----------------------------
-# Header (SINGLE) : Sidebar logo + Top banner + Title
-# ----------------------------
-# Sidebar logo
-safe_show_logo(LOGO_PATH, where="sidebar", width=220)
-
-# Top banner logo (container width)
-safe_show_logo(LOGO_PATH, where="main", width=None, use_container_width=True)
-
-st.markdown("<h1 style='text-align:center; margin:0;'>SynerCardioConsult</h1>", unsafe_allow_html=True)
-st.markdown(
-    "<p style='text-align:center; color:gray; margin-top:6px;'>Preoperative Cardiology Consultation Tool</p>",
-    unsafe_allow_html=True
-)
-st.divider()
 
 
 # ----------------------------
@@ -206,14 +114,11 @@ def load_drug_list():
             import pandas as pd
 
             df = pd.read_csv(csv_path)
-            if df.empty:
-                return DEFAULT_DRUGS, "İlaç listesi: varsayılan (CSV boş)"
             if "drug_name" in df.columns:
                 drugs = df["drug_name"].dropna().astype(str).unique().tolist()
             else:
                 drugs = df.iloc[:, 0].dropna().astype(str).unique().tolist()
-
-            drugs = sorted(set([d.strip() for d in drugs if d and str(d).strip()]))
+            drugs = sorted(set([d.strip() for d in drugs if d.strip()]))
             if drugs:
                 return drugs, f"İlaç listesi: data/sgk_ilaclar.csv ({len(drugs)} kayıt)"
         except Exception as e:
@@ -299,62 +204,73 @@ def esc_rcri_pathway_summary(
     workup: list[str] = []
     pathway_lines: list[str] = []
 
+    # --- ACİL ---
     if urgency == "Acil":
-        pathway_lines.append("Acil cerrahi → zaman kısıtlı; sadece sonucu değiştirecek (management-changing) testler.")
-        workup.append("12 derivasyonlu ECG + klinik değerlendirme (acil).")
+        pathway_lines.append("Acil cerrahi → Yalnızca tedaviyi değiştirecek testler yapılır.")
+        workup.append("ECG + klinik değerlendirme.")
     else:
         pathway_lines.append(
-            "Elektif/Time-sensitive → ESC risk katmanlama: cerrahi risk + RCRI + fonksiyonel kapasite + semptomlar."
+            "Elektif cerrahi → Cerrahi risk, RCRI, efor kapasitesi ve semptomlara göre değerlendirme."
         )
 
+    # --- AKTİF SEMPTOM ---
     if unstable_flag:
         pathway_lines.append(
-            "Aktif/önemli semptom varsa → öncelik kardiyak stabilizasyon ve endikasyona göre ileri değerlendirme."
+            "Aktif kardiyak semptom mevcut → Önce kardiyak stabilizasyon sağlanmalı."
         )
-        workup.append("Kardiyoloji değerlendirmesi (management-changing yaklaşım).")
-        workup.append("Endikasyona göre TTE (özellikle KY/dispne/üfürüm/EF bilinmiyor ise).")
+        workup.append("Kardiyoloji konsültasyonu.")
+        workup.append("Ekokardiyografi (KY/dispne/üfürüm varsa veya EF bilinmiyorsa).")
         if high_risk_surg or intermediate_surg:
-            workup.append("hs-troponin bazal + postop 48–72 saat izlem (merkez protokolüne göre).")
-            workup.append("BNP/NT-proBNP (risk katmanlaması için düşünülebilir).")
+            workup.append("Troponin (bazal) + postop 48–72 saat izlem.")
+            workup.append("BNP/NT-proBNP.")
         return "\n".join([f"- {x}" for x in pathway_lines]), workup
 
+    # --- DÜŞÜK RİSK PROFİLİ ---
     if low_surg and rcri_score == 0 and functional_capacity == "≥4 MET":
-        pathway_lines.append("Düşük cerrahi risk + RCRI 0 + ≥4 MET → ek kardiyak test genellikle gerekmez.")
-        workup.append("Standart perioperatif izlem + bazal ECG (gerektiğinde).")
+        pathway_lines.append("Düşük riskli profil (düşük cerrahi risk + RCRI 0 + iyi efor kapasitesi) → Ek kardiyak test gerekmez.")
+        workup.append("Rutin perioperatif izlem, gerekirse bazal ECG.")
         return "\n".join([f"- {x}" for x in pathway_lines]), workup
 
+    # --- ARTIRILMIŞ RİSK ---
     if high_risk_surg or intermediate_surg or rcri_score >= 1 or poor_fc or unknown_fc:
-        pathway_lines.append(f"Risk artırıcı faktör(ler): cerrahi={surgery_risk}, RCRI={rcri_score}, MET={functional_capacity}.")
-        workup.append("12 derivasyonlu ECG (bazal).")
+        risk_factors = []
+        if high_risk_surg or intermediate_surg:
+            risk_factors.append(f"cerrahi risk: {surgery_risk}")
+        if rcri_score >= 1:
+            risk_factors.append(f"RCRI: {rcri_score}")
+        if poor_fc or unknown_fc:
+            risk_factors.append(f"efor kapasitesi: {functional_capacity}")
+        pathway_lines.append(f"Risk artırıcı faktörler: {', '.join(risk_factors)}.")
+
+        workup.append("Bazal ECG.")
 
         if high_risk_surg or intermediate_surg:
-            workup.append("hs-troponin bazal + postop 48–72 saat izlem (merkez protokolüne göre).")
+            workup.append("Troponin (bazal) + postop 48–72 saat izlem.")
 
         if intermediate_surg or high_risk_surg or poor_fc or unknown_fc:
-            workup.append("Klinik/endikasyona göre TTE (EF/kapak hastalığı/dispne varlığında öncelikli).")
+            workup.append("Ekokardiyografi (KY/kapak hastalığı/dispne varsa öncelikli).")
 
-        if high_risk_surg or rcri_score >= 2 or (poor_fc or unknown_fc):
-            workup.append(
-                "BNP/NT-proBNP (özellikle ≥65 yaş veya orta/yüksek risk cerrahide risk katmanlaması için düşünülebilir)."
-            )
+        if high_risk_surg or rcri_score >= 2 or poor_fc or unknown_fc:
+            workup.append("BNP/NT-proBNP (≥65 yaş veya orta/yüksek riskli cerrahide).")
 
         if (high_risk_surg or rcri_score >= 2) and (poor_fc or unknown_fc) and urgency != "Acil":
             workup.append(
-                "Efor kapasitesi düşük/bilinmiyor + yüksek/orta risk: sadece sonucu değiştirecekse non-invaziv iskemi testi düşünülebilir."
+                "Efor kapasitesi düşük/bilinmiyor → Tedaviyi değiştirecekse iskemi testi düşünülebilir."
             )
 
-        pathway_lines.append("Test seçimi: sadece sonucu/tedaviyi değiştirecek (management-changing) ise.")
+        pathway_lines.append("Not: Testler yalnızca tedavi kararını değiştirecekse istenmelidir.")
         return "\n".join([f"- {x}" for x in pathway_lines]), workup
 
-    pathway_lines.append("Düşük-orta risk profil → klinik değerlendirme + bazal ECG ile proceed.")
-    workup.append("12 derivasyonlu ECG (bazal).")
+    # --- DÜŞÜK-ORTA RİSK ---
+    pathway_lines.append("Düşük-orta riskli profil → Bazal ECG + klinik değerlendirme yeterli.")
+    workup.append("Bazal ECG.")
     return "\n".join([f"- {x}" for x in pathway_lines]), workup
 
 
 def get_mech_valve_warfarin_note() -> str:
     return "\n".join(
         [
-            "MEKANİK KAPAK – WARFARİN YÖNETİMİ ve ENFEKTİF ENDOKARDİT PROFİLAKSİSİ (Otomatik Not)",
+            "MEKANİK KAPAK – WARFARİN YÖNETİMİ ve ENFEKTİF ENDOKARDİT PROFİLAKSİSİ ",
             "- Warfarin operasyon tarihinden **5 gün önce kesilmelidir**.",
             "- Operasyon sabahı hedef **INR < 1.5** olacak şekilde planlama yapılmalıdır.",
             "- INR operasyon öncesi gün kontrol edilmelidir.",
@@ -523,27 +439,115 @@ def get_af_rate_control_text(has_af: str, hr: int, has_hf: str, lvef: str, curre
     return "\n".join(lines) + "\n"
 
 
+def get_postop_af_risk_text(age: int, has_hf: str, has_ckd: str, surgery_risk: str, hr: int) -> str:
+    flags = 0
+    if age >= 70:
+        flags += 1
+    if has_hf == "Evet":
+        flags += 1
+    if has_ckd == "Evet":
+        flags += 1
+    if surgery_risk == "Yüksek":
+        flags += 1
+    if hr >= 100:
+        flags += 1
+
+    if flags >= 3:
+        risk_level = "artmış"
+    elif flags == 2:
+        risk_level = "orta"
+    else:
+        risk_level = "düşük/orta"
+
+    return f"- Postop AF/aritmi riski: {risk_level}. İlk 48–72 saatte ritim/HR ve elektrolitlerin yakın izlenmesi önerilir."
+
+
 # ----------------------------
 # Antiplatelet monotherapy preop plan
 # ----------------------------
 def get_antiplatelet_monotherapy_preop_plan(agent: str, surgery_risk: str) -> str:
     a = (agent or "").strip()
     if surgery_risk in {"Düşük", "Orta"}:
-        return f"- Antiplatelet monoterapi ({a}): Cerrahi kanama riski **düşük/orta** → **ilaç devamı önerilir (kesilmez).**"
+        return f"- {a}: Kanama riski düşük/orta → **Devam et (kesilmez).**"
     if surgery_risk == "Yüksek":
         if a == "Aspirin":
-            return "- Antiplatelet monoterapi (Aspirin): Cerrahi kanama riski **yüksek** → **operasyondan 7 gün önce kes.**"
+            return "- Aspirin: Kanama riski yüksek → **7 gün önce kes.**"
         if a == "Klopidogrel":
-            return "- Antiplatelet monoterapi (Klopidogrel): Cerrahi kanama riski **yüksek** → **operasyondan 5 gün önce kes.**"
-        return "- Antiplatelet monoterapi: Ajan belirtilmedi (yüksek kanama riski)."
-    return "- Antiplatelet monoterapi: Cerrahi kanama riski belirlenemedi."
+            return "- Klopidogrel: Kanama riski yüksek → **5 gün önce kes.**"
+        return "- Ajan belirtilmedi (yüksek kanama riski)."
+    return "- Kanama riski belirlenemedi."
 
 
 def get_oac_monotherapy_hint(oac_agent: str) -> str:
     a = (oac_agent or "").strip()
     if not a or a == "Bilinmiyor":
-        return "- OAC monoterapi: Ajan seçilmedi → **Warfarin/Apiksaban/Rivaroksaban/Dabigatran/Edoksaban** seçeneklerinden biri seçilmeli."
-    return f"- OAC monoterapi: **{a}** (kesme/bridging/yeniden başlama planı Tool-2’ye göre oluşturulur)."
+        return "- OAC seçilmedi → Warfarin / Apiksaban / Rivaroksaban / Dabigatran / Edoksaban'dan biri seçilmeli."
+    return f"- {a}: Kesme ve yeniden başlama planı Antikoagülan Değerlendirme bölümünde."
+
+
+# ----------------------------
+# DAPT agent-specific preop cutting info
+# ----------------------------
+def get_dapt_cutting_info(aspirin_dose: str, p2y12_agent: str, surgery_risk: str) -> list[str]:
+    """Return concise cutting instructions for the specific DAPT agents selected."""
+    lines = []
+    asp = (aspirin_dose or "").strip()
+    p2y12 = (p2y12_agent or "").strip()
+
+    # Aspirin cutting info
+    if asp and asp != "Bilinmiyor" and asp != "—":
+        if surgery_risk == "Yüksek":
+            lines.append(f"- Aspirin ({asp}): Yüksek kanama riski → **7 gün önce kes**, hemostaz sağlanınca tekrar başla.")
+        else:
+            lines.append(f"- Aspirin ({asp}): **Devam et** (düşük/orta kanama riski).")
+
+    # P2Y12 cutting info — only for the selected agent
+    if p2y12 and p2y12 != "Bilinmiyor" and p2y12 != "—":
+        if p2y12 == "Klopidogrel":
+            lines.append("- Klopidogrel: **5 gün önce kes**, postop 24–72 saat içinde yeniden başla.")
+        elif p2y12 == "Prasugrel":
+            lines.append("- Prasugrel: **7 gün önce kes**, postop 24–72 saat içinde yeniden başla.")
+        elif p2y12 == "Tikagrelor":
+            lines.append("- Tikagrelor: **3–5 gün önce kes**, postop 24–72 saat içinde yeniden başla.")
+
+    if not lines:
+        lines.append("- DAPT ajanları belirtilmedi.")
+
+    return lines
+
+
+def filter_dapt_recommendation(recommendation_tr: str, p2y12_agent: str) -> str:
+    """Filter the YAML engine recommendation to only mention the selected P2Y12 agent."""
+    if not recommendation_tr:
+        return ""
+
+    rec = recommendation_tr.strip()
+    p2y12 = (p2y12_agent or "").strip()
+
+    # If the recommendation contains all three agents, rebuild with only the selected one
+    all_three = ("Tikagrelor" in rec and "Klopidogrel" in rec and "Prasugrel" in rec)
+    if not all_three:
+        return rec
+
+    # Determine cutting time for the selected agent
+    cutting_map = {
+        "Klopidogrel": "Klopidogrel → 5 gün önce kesilir",
+        "Prasugrel": "Prasugrel → 7 gün önce kesilir",
+        "Tikagrelor": "Tikagrelor → 3–5 gün önce kesilir",
+    }
+    agent_cut = cutting_map.get(p2y12, "")
+
+    # Build a clean, agent-specific recommendation
+    parts = []
+    if "ASA sürdürülerek" in rec or "aspirin" in rec.lower():
+        parts.append("Aspirin sürdürülür")
+    if agent_cut:
+        parts.append(agent_cut)
+    if "bridging" in rec.lower():
+        parts.append("Gerekirse IV antiplatelet bridging düşünülebilir")
+    parts.append("Postop yeniden başlama multidisipliner değerlendirme ile planlanır")
+
+    return ". ".join(parts) + "."
 
 
 # ----------------------------
@@ -557,6 +561,7 @@ def generate_consultation_note(
     rcri_block: str,
     esc_pathway_block: str,
     esc_workup_block: str,
+    include_rcri: bool = True,
 ) -> str:
     today = datetime.now().strftime("%d.%m.%Y")
     hr_val = int(context.get("hr", 0) or 0)
@@ -570,18 +575,15 @@ def generate_consultation_note(
     symptoms_list = context.get("symptoms", [])
     symptom_text = ", ".join(symptoms_list) if symptoms_list and "Yok" not in symptoms_list else "Aktif kardiyak semptom tariflemiyor."
 
-    hf_block = "- Kalp yetersizliği: Yok / bilinmiyor.\n"
+    hf_line = ""
     if context.get("has_hf") == "Evet":
-        hf_block = (
-            f"- Kalp yetersizliği: VAR (NYHA: {context.get('nyha')}, LVEF: {context.get('lvef')}).\n"
-            "- Perioperatif volüm/hemodinami: Hipovolemi ve hipervolemiden kaçınılmalı; sıvı yönetimi hedefe yönelik titrasyonla yürütülmelidir.\n"
-        )
-
-    ckd_block = "- Kronik böbrek hastalığı: Yok / bilinmiyor.\n"
+        hf_line = f"- Kalp yetersizliği: NYHA {context.get('nyha')}, LVEF {context.get('lvef')}. Perioperatif volüm dengesine dikkat."
+    
+    ckd_line = ""
     if context.get("has_ckd") == "Evet":
         egfr = float(context.get("egfr", 0) or 0)
         egfr_text = f"{egfr:.0f} ml/dk/1.73m²" if egfr > 0 else "bilinmiyor"
-        ckd_block = f"- Kronik böbrek hastalığı: VAR (eGFR: {egfr_text}). Nefrotoksik ajanlardan kaçınılmalı; elektrolit/volüm yakın izlenmelidir.\n"
+        ckd_line = f"- KBH: eGFR {egfr_text}. Nefrotoksik ajanlardan kaçınılmalı."
 
     comorb = []
     if context.get("has_dm") == "Evet":
@@ -589,17 +591,17 @@ def generate_consultation_note(
     if context.get("has_ht") == "Evet":
         comorb.append("HT")
     if context.get("has_cad") == "Evet":
-        comorb.append("KAH/PCI öyküsü")
+        comorb.append("KAH/PCI")
     if context.get("has_af") == "Evet":
         comorb.append("AF")
     if context.get("has_mech_valve") == "Evet":
         comorb.append("Mekanik kapak")
     if context.get("has_hf") == "Evet":
-        comorb.append("Kalp yetersizliği")
+        comorb.append("KY")
     if context.get("has_ckd") == "Evet":
-        comorb.append("CKD")
+        comorb.append("KBH")
     if context.get("has_device") == "Evet":
-        comorb.append(f"Kardiyak cihaz ({context.get('device_type')})")
+        comorb.append(f"Cihaz ({context.get('device_type')})")
     comorb_text = ", ".join(comorb) if comorb else "Belirtilmedi"
 
     meds = context.get("current_meds", [])
@@ -612,10 +614,7 @@ def generate_consultation_note(
         oac_mono_agent = context.get("mono_oac_agent", "Bilinmiyor")
         antithrombotic_block = "\n".join(
             [
-                "F1) Antitrombotik Tedavi",
-                f"- PCI zamanı: {pci_time}",
-                "- Strateji: Monoterapi (OAC)",
-                f"- Ajan: {oac_mono_agent}",
+                f"- OAC Monoterapi: {oac_mono_agent} (PCI: {pci_time})",
                 get_oac_monotherapy_hint(oac_mono_agent),
             ]
         )
@@ -624,28 +623,30 @@ def generate_consultation_note(
         ap_plan = get_antiplatelet_monotherapy_preop_plan(ap_agent, context.get("surgery_risk"))
         antithrombotic_block = "\n".join(
             [
-                "F1) Antitrombotik Tedavi",
-                f"- PCI zamanı: {pci_time}",
-                "- Strateji: Monoterapi (Antiplatelet)",
-                f"- Ajan: {ap_agent}",
+                f"- Antiplatelet Monoterapi: {ap_agent} (PCI: {pci_time})",
                 ap_plan,
             ]
         )
-    elif ant_strategy == "DAPT (Tool-1)":
+    elif ant_strategy == "DAPT":
+        cutting_lines = get_dapt_cutting_info(
+            aspirin_dose=context.get("aspirin_dose", ""),
+            p2y12_agent=context.get("p2y12_agent_ui", ""),
+            surgery_risk=context.get("surgery_risk", ""),
+        )
         antithrombotic_block = "\n".join(
             [
-                "F1) Antitrombotik Tedavi",
-                f"- PCI zamanı: {pci_time}",
-                "- Strateji: DAPT (Tool-1)",
-                f"- Aspirin: {context.get('aspirin_dose')}",
-                f"- P2Y12 inhibitörü: {context.get('p2y12_agent_ui')}",
+                f"- DAPT (PCI: {pci_time})",
+                *cutting_lines,
             ]
         )
     else:
-        antithrombotic_block = "\n".join(["F1) Antitrombotik Tedavi", "- Strateji: Belirtilmedi / uygulanmadı."])
+        antithrombotic_block = "- Antitrombotik strateji belirtilmedi."
 
-    plan = dapt_result.get("recommendation_tr", "")
+    plan_raw = dapt_result.get("recommendation_tr", "")
     rec_class = dapt_result.get("class", "")
+    # Filter the YAML recommendation to only mention the selected P2Y12 agent
+    p2y12_selected = context.get("p2y12_agent_ui", "")
+    plan = filter_dapt_recommendation(plan_raw, p2y12_selected)
 
     af_rate_control = get_af_rate_control_text(
         has_af=context.get("has_af"),
@@ -655,63 +656,115 @@ def generate_consultation_note(
         current_meds=meds,
     )
 
-    note = f"""
-PREOPERATİF KARDİYOLOJİ KONSÜLTASYON NOTU
+    # Build RCRI section conditionally
+    rcri_section = ""
+    if include_rcri:
+        rcri_section = f"""
+D) Risk Katmanlama (RCRI + ESC)
+{rcri_block}
+{esc_pathway_block}
+Önerilen tetkik:
+{esc_workup_block}
+"""
+
+    # Build clinical notes section
+    clinical_lines = []
+    if hf_line:
+        clinical_lines.append(hf_line)
+    if ckd_line:
+        clinical_lines.append(ckd_line)
+    if device_note and device_note.strip():
+        clinical_lines.append(device_note.strip())
+    clinical_section = "\n".join(clinical_lines) if clinical_lines else "- Ek klinik not yok."
+
+    # Build DAPT recommendation line (only if engine produced meaningful output)
+    dapt_plan_line = ""
+    if plan and plan.strip() and "uygulanmadı" not in plan.lower():
+        dapt_plan_line = f"\n- Kılavuz önerisi: {plan}"
+        if rec_class:
+            dapt_plan_line += f" ({rec_class})"
+
+    note = f"""PREOPERATİF KARDİYOLOJİ KONSÜLTASYON NOTU
 Tarih: {today}
 
 A) Hasta Bilgileri
 - Yaş/Cinsiyet: {context.get("patient_age")} / {context.get("patient_sex")}
 - Komorbiditeler: {comorb_text}
-- Mevcut ilaçlar: {meds_text}
+- İlaçlar: {meds_text}
 
-B) Vital Bulgular
+B) Klinik Değerlendirme
 - Ritim: {rhythm_line}
-- TA (mmHg): {context.get("sbp")}/{context.get("dbp")}
-
-C) İşlem / Cerrahi Bilgisi
-- Planlanan işlem: {context.get("selected_surgery")}
-- Cerrahi kardiyak risk (Table 5): {context.get("surgery_risk")}
-- Cerrahi aciliyeti: {context.get("urgency")}
-
-D) Kardiyak Öykü – Semptom / Fonksiyonel Kapasite
+- TA: {context.get("sbp")}/{context.get("dbp")} mmHg
 - Semptomlar: {symptom_text}
 - Fonksiyonel kapasite: {context.get("functional_capacity")}
 
-E) Risk Katmanlama (ESC entegrasyonlu)
-{rcri_block}
-
-ESC yaklaşım şeması (özet):
-{esc_pathway_block}
-
-Önerilen yaklaşım / test seti (management-changing prensibi):
-{esc_workup_block}
-
-E2) Klinik Değerlendirme (perioperatif kritik noktalar)
-{hf_block}{ckd_block}
-{device_note}
+C) Cerrahi Bilgisi
+- İşlem: {context.get("selected_surgery")}
+- Kardiyak risk: {context.get("surgery_risk")} | Aciliyet: {context.get("urgency")}
+{rcri_section}
+E) Perioperatif Klinik Notlar
+{clinical_section}
 
 F) Antitrombotik Yönetim
-{antithrombotic_block}
+{antithrombotic_block}{dapt_plan_line}
 
 {oac_text_block}
 
-G) Kılavuz Temelli Perioperatif Antitrombotik Plan (Tool-1 / DAPT)
-- Öneri: {plan}
-- Öneri sınıfı: {rec_class}
-
-H) Ritim / Hız kontrolü ve perioperatif ilaç notu
+G) Ritim / Hız Kontrolü
 {af_rate_control}
 
-I) Sonuç / Plan
-- Bu çıktı karar destek amaçlıdır; nihai klinik karar ilgili hekim değerlendirmesi ve multidisipliner ekip kararı ile verilecektir.
+H) Sonuç
+- Bu çıktı karar destek amaçlıdır; nihai klinik karar ilgili hekim ve multidisipliner ekip tarafından verilir.
 """.strip()
 
     return note
 
 
 # ----------------------------
-# rules/dapt.yaml var mı?
+# Streamlit UI — SINGLE PAGE (Branding + Logo)
+# Optimized for 1600x350 transparent PNG logo
 # ----------------------------
+
+import streamlit as st
+import os
+
+LOGO_PATH = "assets/logo.png"
+
+st.set_page_config(
+    page_title="SynerCardioConsult",
+    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🫀",
+    layout="centered"
+)
+
+# Sidebar logo
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, width=220)
+
+# Main header logo (application width)
+if os.path.exists(LOGO_PATH):
+    st.image(LOGO_PATH, use_container_width=True)
+
+# Centered title
+st.markdown(
+"""
+<h1 style='text-align:center; margin-top:10px;'>
+SynerCardioConsult
+</h1>
+""",
+unsafe_allow_html=True
+)
+
+# Centered subtitle
+st.markdown(
+"""
+<p style='text-align:center; font-size:18px; color:gray;'>
+Preoperative Cardiology Consultation Tool
+</p>
+""",
+unsafe_allow_html=True
+)
+
+# rules/dapt.yaml var mı?
 if not os.path.exists("rules/dapt.yaml"):
     st.error("rules/dapt.yaml bulunamadı. Repo içinde rules/dapt.yaml yolunu kontrol et.")
     st.stop()
@@ -791,7 +844,7 @@ with st.expander("1) Hasta Yaş, Cerrahi ve Klinik Bilgiler", expanded=True):
     if has_cad == "Evet":
         pci_time = st.selectbox("PCI/AKS üzerinden 1 yıl geçti mi?", ["<1 yıl", "≥1 yıl"], index=0, key="pci_time")
         if pci_time == "<1 yıl":
-            antithrombotic_strategy = "DAPT (Tool-1)"
+            antithrombotic_strategy = "DAPT"
         else:
             if has_af == "Evet":
                 antithrombotic_strategy = "Monoterapi-OAC"
@@ -814,61 +867,64 @@ with st.expander("1) Hasta Yaş, Cerrahi ve Klinik Bilgiler", expanded=True):
 
     # RCRI module
     st.markdown("---")
-    st.subheader("RCRI (Revised Cardiac Risk Index) – ESC entegrasyonlu risk katmanlama")
+    include_rcri = st.checkbox("RCRI (Revised Cardiac Risk Index) – ESC risk katmanlama ekle", value=False, key="include_rcri")
 
-    default_high_risk_surgery = (surgery_risk == "Yüksek")
+    rcri_flags = {}
+    rcri_score = 0
+    rcri_positives = []
+    pathway_text = ""
+    workup_list = []
 
-    colr1, colr2 = st.columns(2)
-    with colr1:
-        rcri_high_risk_surgery = st.checkbox(
-            RCRI_ITEMS_TR["high_risk_surgery"],
-            value=default_high_risk_surgery,
-            key="rcri_high_risk_surgery",
-        )
-        rcri_ihd = st.checkbox(RCRI_ITEMS_TR["ihd"], value=(has_cad == "Evet"), key="rcri_ihd")
-        rcri_chf = st.checkbox(RCRI_ITEMS_TR["chf"], value=(has_hf == "Evet"), key="rcri_chf")
-    with colr2:
-        rcri_cva = st.checkbox(RCRI_ITEMS_TR["cva"], value=False, key="rcri_cva")
-        rcri_dm_insulin = st.checkbox(RCRI_ITEMS_TR["dm_insulin"], value=False, key="rcri_dm_insulin")
-        creatinine = st.number_input("Kreatinin (mg/dL) - varsa", min_value=0.0, max_value=25.0, value=0.0, step=0.1, key="creatinine")
-        rcri_cr_gt2 = bool(creatinine > 2.0)
+    if include_rcri:
+        default_high_risk_surgery = (surgery_risk == "Yüksek")
 
-    rcri_flags = {
-        "high_risk_surgery": rcri_high_risk_surgery,
-        "ihd": rcri_ihd,
-        "chf": rcri_chf,
-        "cva": rcri_cva,
-        "dm_insulin": rcri_dm_insulin,
-        "cr_gt2": rcri_cr_gt2,
-    }
-    rcri_score, rcri_positives = calc_rcri(rcri_flags)
+        colr1, colr2 = st.columns(2)
+        with colr1:
+            rcri_high_risk_surgery = st.checkbox(RCRI_ITEMS_TR["high_risk_surgery"], value=default_high_risk_surgery, key="rcri_high_risk_surgery")
+            rcri_ihd = st.checkbox(RCRI_ITEMS_TR["ihd"], value=(has_cad == "Evet"), key="rcri_ihd")
+            rcri_chf = st.checkbox(RCRI_ITEMS_TR["chf"], value=(has_hf == "Evet"), key="rcri_chf")
+        with colr2:
+            rcri_cva = st.checkbox(RCRI_ITEMS_TR["cva"], value=False, key="rcri_cva")
+            rcri_dm_insulin = st.checkbox(RCRI_ITEMS_TR["dm_insulin"], value=False, key="rcri_dm_insulin")
+            creatinine = st.number_input("Kreatinin (mg/dL) - varsa", min_value=0.0, max_value=25.0, value=0.0, step=0.1, key="creatinine")
+            rcri_cr_gt2 = bool(creatinine > 2.0)
 
-    st.markdown(f"**RCRI skoru:** `{rcri_score}` / 6")
-    if rcri_positives:
-        st.caption("Pozitif kriter(ler): " + " • ".join(rcri_positives))
-    else:
-        st.caption("Pozitif kriter yok (RCRI 0).")
+        rcri_flags = {
+            "high_risk_surgery": rcri_high_risk_surgery,
+            "ihd": rcri_ihd,
+            "chf": rcri_chf,
+            "cva": rcri_cva,
+            "dm_insulin": rcri_dm_insulin,
+            "cr_gt2": rcri_cr_gt2,
+        }
+        rcri_score, rcri_positives = calc_rcri(rcri_flags)
 
-    pathway_text, workup_list = esc_rcri_pathway_summary(
-        surgery_risk=surgery_risk,
-        rcri_score=rcri_score,
-        functional_capacity=functional_capacity,
-        symptoms=symptoms,
-        urgency=urgency,
-        has_hf=has_hf,
-        lvef=lvef,
-    )
-
-    st.markdown("#### ESC şeması önizleme (RCRI + MET + semptom + cerrahi risk)")
-    tabA, tabB = st.tabs(["Akış (özet)", "Önerilen test/izlem (özet)"])
-    with tabA:
-        st.markdown(pathway_text)
-    with tabB:
-        if workup_list:
-            for w in workup_list:
-                st.write(f"- {w}")
+        st.markdown(f"**RCRI skoru:** `{rcri_score}` / 6")
+        if rcri_positives:
+            st.caption("Pozitif kriter(ler): " + " • ".join(rcri_positives))
         else:
-            st.write("- Ek test önerisi yok.")
+            st.caption("Pozitif kriter yok (RCRI 0).")
+
+        pathway_text, workup_list = esc_rcri_pathway_summary(
+            surgery_risk=surgery_risk,
+            rcri_score=rcri_score,
+            functional_capacity=functional_capacity,
+            symptoms=symptoms,
+            urgency=urgency,
+            has_hf=has_hf,
+            lvef=lvef,
+        )
+
+        st.markdown("#### ESC şeması önizleme (RCRI + MET + semptom + cerrahi risk)")
+        tabA, tabB = st.tabs(["Akış (özet)", "Önerilen test/izlem (özet)"])
+        with tabA:
+            st.markdown(pathway_text)
+        with tabB:
+            if workup_list:
+                for w in workup_list:
+                    st.write(f"- {w}")
+            else:
+                st.write("- Ek test önerisi yok.")
 
     # Device logic
     st.markdown("---")
@@ -889,21 +945,16 @@ with st.expander("1) Hasta Yaş, Cerrahi ve Klinik Bilgiler", expanded=True):
 
 
 # ----------------------------
-# Tool init (after shared inputs)
+# 2) Antiplatelet (DAPT) -> only if PCI <1 year
 # ----------------------------
 show_tool1 = (has_cad == "Evet") and (pci_time == "<1 yıl")
-show_tool2 = (has_af == "Evet") or (has_mech_valve_ui == "Evet")
 
-
-# ----------------------------
-# 2) Tool-1 (DAPT) -> only if PCI <1 year
-# ----------------------------
-with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_tool1):
+with st.expander("2) Antiplatelet Değerlendirme – DAPT (PCI <1 yıl)", expanded=show_tool1):
     if not show_tool1:
         if has_cad != "Evet":
-            st.info("Koroner arter hastalığı / PCI öyküsü **Hayır** seçildiği için Tool-1 (DAPT) algoritması gizlendi.")
+            st.info("Koroner arter hastalığı / PCI öyküsü **Hayır** seçildiği için Antiplatelet Değerlendirme (DAPT) algoritması gizlendi.")
         else:
-            st.success("PCI/AKS üzerinden **≥1 yıl** geçtiği için monoterapi dalı aktif. Tool-1 (DAPT) uygulanmadı.")
+            st.success("PCI/AKS üzerinden **≥1 yıl** geçtiği için monoterapi dalı aktif. DAPT değerlendirmesi uygulanmadı.")
         aspirin_dose = "—"
         p2y12_agent_ui = "—"
     else:
@@ -928,6 +979,7 @@ with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_to
         st.markdown("---")
         answers = st.session_state["answers"]
 
+        # YAML çoğunlukla answers["p2y12_agent"] bekler → map'liyoruz
         if p2y12_agent_ui and p2y12_agent_ui != "Bilinmiyor":
             answers["p2y12_agent"] = p2y12_agent_ui
         if aspirin_dose and aspirin_dose != "Bilinmiyor":
@@ -943,35 +995,38 @@ with st.expander("2) Tool-1: DAPT (yalnızca PCI <1 yıl ise)", expanded=show_to
             answers[q.id] = val
 
         st.markdown("---")
-        if st.button("Tool-1 Sonucu Göster (opsiyonel)", key="btn_tool1"):
+        if st.button("DAPT Sonucu Göster", key="btn_tool1"):
             try:
                 dapt_result = engine.evaluate(answers)
             except Exception as e:
-                st.error("Tool-1 değerlendirme hatası (rules/dapt.yaml / eksik cevap / kural uyuşmazlığı).")
+                st.error("DAPT değerlendirme hatası (rules/dapt.yaml / eksik cevap / kural uyuşmazlığı).")
                 st.exception(e)
                 st.stop()
 
             st.session_state["dapt_result"] = dapt_result
-            st.success(dapt_result.get("recommendation_tr", ""))
+            filtered_rec = filter_dapt_recommendation(dapt_result.get("recommendation_tr", ""), p2y12_agent_ui)
+            st.success(filtered_rec)
             if dapt_result.get("class"):
                 st.info(f"Öneri sınıfı: {dapt_result['class']}")
 
-            show_raw = st.checkbox("Ham yanıtları göster (Tool-1)", value=False, key="show_raw_tool1")
+            show_raw = st.checkbox("Ham yanıtları göster (DAPT)", value=False, key="show_raw_tool1")
             if show_raw:
                 st.json(answers)
 
 
 # ----------------------------
-# 3) Tool-2 (OAK/NOAC)
+# 3) Antikoagülan (OAK/NOAC)
 # ----------------------------
+show_tool2 = (has_af == "Evet") or (has_mech_valve_ui == "Evet")
+
 oac_agent = "Bilinmiyor"
 bleed_risk_oac = "Düşük-Orta"
 very_high_bleed = False
 high_te_risk = False
 
-with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=show_tool2):
+with st.expander("3) Antikoagülan Değerlendirme – OAK/NOAC (AF / Mekanik Kapak)", expanded=show_tool2):
     if not show_tool2:
-        st.info("AF **Hayır** ve Mekanik kapak **Hayır** seçildiği için Tool-2 (OAK/NOAC) algoritması gizlendi.")
+        st.info("AF **Hayır** ve Mekanik kapak **Hayır** seçildiği için Antikoagülan Değerlendirme (OAK/NOAC) algoritması gizlendi.")
     else:
         OAC_OPTIONS = ["Bilinmiyor", "Warfarin", "Apiksaban", "Rivaroksaban", "Edoksaban", "Dabigatran"]
 
@@ -1019,7 +1074,7 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
             high_te_risk = False
 
         st.markdown("---")
-        if st.button("Tool-2 Sonucu Göster (opsiyonel)", key="btn_tool2"):
+        if st.button("Antikoagülan Sonucu Göster", key="btn_tool2"):
             mapped_bleed = "Düşük-Orta" if bleed_risk_oac in ["Minör", "Düşük-Orta"] else "Yüksek"
             res = oac_engine.evaluate(
                 agent=oac_agent,
@@ -1040,7 +1095,7 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
                 very_high_bleed=very_high_bleed,
             )
 
-            st.write("### Tool-2 Çıktı")
+            st.write("### Antikoagülan Değerlendirme Çıktısı")
             st.write(res.summary_tr)
             st.write(res.stop_plan_tr)
             st.write(res.bridging_tr)
@@ -1063,11 +1118,12 @@ with st.expander("3) Tool-2: OAK/NOAC (AF veya mekanik kapak varsa)", expanded=s
 # ----------------------------
 # 4) Konsültasyon Notu (AUTO-CALC)
 # ----------------------------
-with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", expanded=True):
+with st.expander("4) Konsültasyon Notu", expanded=True):
     if st.button("Öneri + Konsültasyon Notu Oluştur", key="btn_generate_all"):
-        # Tool-1 auto
+        # DAPT auto
         if show_tool1:
             answers = st.session_state.get("answers", {})
+            # mapping (konsültasyon butonunda da garanti)
             if st.session_state.get("p2y12_agent_ui", "Bilinmiyor") != "Bilinmiyor":
                 answers["p2y12_agent"] = st.session_state.get("p2y12_agent_ui")
             if st.session_state.get("aspirin_dose", "Bilinmiyor") != "Bilinmiyor":
@@ -1076,7 +1132,7 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
             try:
                 dapt_result = engine.evaluate(answers)
             except Exception as e:
-                st.error("Tool-1 auto değerlendirme hatası.")
+                st.error("DAPT otomatik değerlendirme hatası.")
                 st.exception(e)
                 st.stop()
 
@@ -1085,7 +1141,7 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
         else:
             dapt_result = {
                 "output_id": "tool1_inactive",
-                "recommendation_tr": "Tool-1 (DAPT) uygulanmadı (PCI ≥1 yıl veya KAH/PCI yok).",
+                "recommendation_tr": "DAPT değerlendirmesi uygulanmadı (PCI ≥1 yıl veya KAH/PCI yok).",
                 "class": "",
             }
             aspirin_val = "—"
@@ -1093,7 +1149,7 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
 
         device_note = get_device_management_note(has_device, device_type, pace_dependent)
 
-        # Tool-2 auto
+        # OAC auto
         if show_tool2:
             mapped_bleed = "Düşük-Orta" if bleed_risk_oac in ["Minör", "Düşük-Orta"] else "Yüksek"
             has_mech_valve = (has_mech_valve_ui == "Evet")
@@ -1120,14 +1176,14 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
 
             if has_mech_valve:
                 base_lines = [
-                    "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)",
+                    "Oral Antikoagülan Yönetimi",
                     oac_res.summary_tr,
                     "",
                     get_mech_valve_warfarin_note(),
                 ]
             else:
                 base_lines = [
-                    "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)",
+                    "Oral Antikoagülan Yönetimi",
                     oac_res.summary_tr,
                     oac_res.stop_plan_tr,
                     oac_res.bridging_tr,
@@ -1135,32 +1191,37 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
                 ]
 
             if dose_warnings:
-                base_lines += ["", "F2-Not) DOAC Doz / Kesme Uyarıları:", *[f"- {w}" for w in dose_warnings]]
+                base_lines += ["", "DOAC Doz / Kesme Uyarıları:", *[f"- {w}" for w in dose_warnings]]
 
             oac_block = "\n".join([l for l in base_lines if l is not None and str(l).strip() != ""])
         else:
-            oac_block = "F2) Oral Antikoagülasyon (Tool-2 / OAK-NOAC)\n- Tool-2 uygulanmadı: AF veya mekanik kapak yok."
+            oac_block = "Oral Antikoagülan Yönetimi\n- Değerlendirilmedi (AF veya mekanik kapak yok)."
 
-        # RCRI text blocks
-        rcri_score_local, rcri_pos_local = calc_rcri(rcri_flags)
-        rcri_block = "\n".join(
-            [
-                f"- RCRI skoru: {rcri_score_local}/6",
-                ("- Pozitif kriter(ler): " + "; ".join(rcri_pos_local)) if rcri_pos_local else "- Pozitif kriter yok (RCRI 0).",
-            ]
-        )
+        # RCRI text blocks (only if enabled)
+        rcri_block = ""
+        esc_pathway_block = ""
+        esc_workup_block = ""
 
-        pathway_text_local, workup_list_local = esc_rcri_pathway_summary(
-            surgery_risk=surgery_risk,
-            rcri_score=rcri_score_local,
-            functional_capacity=functional_capacity,
-            symptoms=symptoms,
-            urgency=urgency,
-            has_hf=has_hf,
-            lvef=lvef,
-        )
-        esc_pathway_block = pathway_text_local
-        esc_workup_block = "\n".join([f"- {w}" for w in workup_list_local]) if workup_list_local else "- Ek test önerisi yok."
+        if include_rcri:
+            rcri_score_local, rcri_pos_local = calc_rcri(rcri_flags)
+            rcri_block = "\n".join(
+                [
+                    f"- RCRI skoru: {rcri_score_local}/6",
+                    ("- Pozitif kriter(ler): " + "; ".join(rcri_pos_local)) if rcri_pos_local else "- Pozitif kriter yok (RCRI 0).",
+                ]
+            )
+
+            pathway_text_local, workup_list_local = esc_rcri_pathway_summary(
+                surgery_risk=surgery_risk,
+                rcri_score=rcri_score_local,
+                functional_capacity=functional_capacity,
+                symptoms=symptoms,
+                urgency=urgency,
+                has_hf=has_hf,
+                lvef=lvef,
+            )
+            esc_pathway_block = pathway_text_local
+            esc_workup_block = "\n".join([f"- {w}" for w in workup_list_local]) if workup_list_local else "- Ek test önerisi yok."
 
         ctx = {
             "patient_age": patient_age,
@@ -1203,17 +1264,16 @@ with st.expander("4) Konsültasyon Notu (Tool-1 + Tool-2 + RCRI birleşik)", exp
             rcri_block=rcri_block,
             esc_pathway_block=esc_pathway_block,
             esc_workup_block=esc_workup_block,
+            include_rcri=include_rcri,
         )
         st.text_area("Kopyalanabilir çıktı", note, height=760)
 
-
+    # ----------------------------
+# Footer (Always visible)
 # ----------------------------
-# FOOTER (always visible)
-# ----------------------------
-st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
 
 st.markdown(
-    """
+"""
 <style>
 .footer {
 position: fixed;
@@ -1226,13 +1286,12 @@ text-align: center;
 padding: 10px;
 font-size: 13px;
 border-top: 1px solid #e6e6e6;
-z-index: 9999;
 }
 </style>
 
 <div class="footer">
-<b>SynerCardioConsult</b> v1.0 | © 2026 Dr. Halil Siner – All rights reserved
+SynerCardioConsult v1.0 | © 2026  Halil Siner,MD – All rights reserved
 </div>
 """,
-    unsafe_allow_html=True,
+unsafe_allow_html=True
 )
