@@ -745,6 +745,7 @@ import streamlit as st
 import os
 
 LOGO_PATH = "assets/logo.png"
+TKD_LOGO_PATH = "assets/tkd_logo.png"
 
 st.set_page_config(
     page_title="SynerCardioConsult",
@@ -772,19 +773,30 @@ if ('serviceWorker' in navigator) {
 """
 st.markdown(PWA_META, unsafe_allow_html=True)
 
-# Sidebar logo
+# Sidebar logos
 if os.path.exists(LOGO_PATH):
     try:
         st.sidebar.image(LOGO_PATH, width=220)
     except Exception:
         pass
+if os.path.exists(TKD_LOGO_PATH):
+    try:
+        st.sidebar.image(TKD_LOGO_PATH, width=220)
+    except Exception:
+        pass
 
-# Main header logo (application width)
+# Main header logos — side by side
+_col1, _col2 = st.columns(2)
 if os.path.exists(LOGO_PATH):
     try:
-        st.image(LOGO_PATH, use_container_width=True)
+        _col1.image(LOGO_PATH, use_container_width=True)
     except TypeError:
-        st.image(LOGO_PATH, use_column_width=True)
+        _col1.image(LOGO_PATH, use_column_width=True)
+if os.path.exists(TKD_LOGO_PATH):
+    try:
+        _col2.image(TKD_LOGO_PATH, use_container_width=True)
+    except TypeError:
+        _col2.image(TKD_LOGO_PATH, use_column_width=True)
 
 # Centered title
 st.markdown(
